@@ -16,16 +16,19 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDatabase } from '@/contexts/DatabaseContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { Building2, Moon, Sun, Database, Server, Trash2, Calendar, Settings } from 'lucide-react'
+import { Building2, Moon, Sun, Database, Server, Trash2, Calendar, Settings, AlertCircle, Info } from 'lucide-react'
 import { toast } from 'sonner'
 
 export const LoginPage = () => {
   const [loginData, setLoginData] = useState({ email: '', password: '' })
   const [registerData, setRegisterData] = useState({ email: '', password: '', confirmPassword: '' })
   const [isLoading, setIsLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('login')
+  const [lastError, setLastError] = useState<{ type: 'login' | 'register', message: string } | null>(null)
   const [remoteConfig, setRemoteConfig] = useState({
     host: 'localhost',
     port: '3002'
@@ -37,16 +40,21 @@ export const LoginPage = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setLastError(null)
     
     try {
       const result = await login(loginData.email, loginData.password)
       if (result.success) {
         toast.success('Login effettuato con successo!')
       } else {
-        toast.error(result.error || 'Credenziali non valide')
+        const errorMessage = result.error || 'Credenziali non valide'
+        setLastError({ type: 'login', message: errorMessage })
+        toast.error(errorMessage)
       }
     } catch (error) {
-      toast.error('Errore durante il login')
+      const errorMessage = 'Errore durante il login'
+      setLastError({ type: 'login', message: errorMessage })
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -54,14 +62,19 @@ export const LoginPage = () => {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
+    setLastError(null)
     
     if (registerData.password !== registerData.confirmPassword) {
-      toast.error('Le password non coincidono')
+      const errorMessage = 'Le password non coincidono'
+      setLastError({ type: 'register', message: errorMessage })
+      toast.error(errorMessage)
       return
     }
 
     if (registerData.password.length < 6) {
-      toast.error('La password deve contenere almeno 6 caratteri')
+      const errorMessage = 'La password deve contenere almeno 6 caratteri'
+      setLastError({ type: 'register', message: errorMessage })
+      toast.error(errorMessage)
       return
     }
 
@@ -72,10 +85,24 @@ export const LoginPage = () => {
       if (result.success) {
         toast.success('Registrazione completata con successo!')
       } else {
-        toast.error(result.error || 'Errore durante la registrazione')
+        const errorMessage = result.error || 'Errore durante la registrazione'
+        setLastError({ type: 'register', message: errorMessage })
+        toast.error(errorMessage)
+        
+        // If email already exists, suggest switching to login
+        if (errorMessage.includes('già registrata') || errorMessage.includes('already registered')) {
+          // Auto-fill login form with the same email
+          setLoginData({ email: registerData.email, password: '' })
+          // Switch to login tab after a short delay
+          setTimeout(() => {
+            setActiveTab('login')
+          }, 2000)
+        }
       }
     } catch (error) {
-      toast.error('Errore durante la registrazione')
+      const errorMessage = 'Errore durante la registrazione'
+      setLastError({ type: 'register', message: errorMessage })
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -117,6 +144,7 @@ export const LoginPage = () => {
 
   const handleModeChange = (newMode: 'local' | 'remote') => {
     setMode(newMode)
+    setLastError(null) // Clear errors when switching modes
     if (newMode === 'remote') {
       // Applica la configurazione remota
       setDatabaseRemoteConfig(remoteConfig.host, remoteConfig.port)
@@ -129,6 +157,35 @@ export const LoginPage = () => {
     if (mode === 'remote') {
       setDatabaseRemoteConfig(newConfig.host, newConfig.port)
     }
+  }
+
+  const renderErrorAlert = (tabType: 'login' | 'register') => {
+    if (!lastError || lastError.type !== tabType) return null
+
+    const isEmailAlreadyExists = lastError.message.includes('già registrata') || lastError.message.includes('already registered')
+    const isInvalidCredentials = lastError.message.includes('Credenziali non valide') || lastError.message.includes('Invalid credentials')
+
+    return (
+      <Alert className="mb-4 border-red-200 bg-red-50">
+        <AlertCircle className="h-4 w-4 text-red-600" />
+        <AlertDescription className="text-red-800">
+          <div className="space-y-2">
+            <p className="font-medium">{lastError.message}</p>
+            {isEmailAlreadyExists && (
+              <p className="text-sm">
+                Questa email è già registrata. Prova ad accedere con la tab "Accedi" usando la password corretta.
+              </p>
+            )}
+            {isInvalidCredentials && (
+              <p className="text-sm">
+                La password non è corretta per questa email. Verifica di aver inserito la password giusta, 
+                oppure registra un nuovo account con un'email diversa.
+              </p>
+            )}
+          </div>
+        </AlertDescription>
+      </Alert>
+    )
   }
 
   const DatabaseInfoSection = () => (
@@ -188,6 +245,14 @@ export const LoginPage = () => {
           <p className="text-xs text-orange-600">
             Server: http://{remoteConfig.host}:{remoteConfig.port}
           </p>
+
+          <Alert className="border-blue-200 bg-blue-50">
+            <Info className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-blue-800 text-xs">
+              <strong>Nota:</strong> Se ricevi errori di "email già registrata", significa che l'account esiste già sul server. 
+              Usa la tab "Accedi" con la password corretta, oppure registra un nuovo account con un'email diversa.
+            </AlertDescription>
+          </Alert>
         </div>
       )}
 
@@ -274,13 +339,15 @@ export const LoginPage = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="login" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Accedi</TabsTrigger>
               <TabsTrigger value="register">Registrati</TabsTrigger>
             </TabsList>
             
             <TabsContent value="login" className="space-y-4">
+              {renderErrorAlert('login')}
+              
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="login-email">Email</Label>
@@ -311,6 +378,8 @@ export const LoginPage = () => {
             </TabsContent>
             
             <TabsContent value="register" className="space-y-4">
+              {renderErrorAlert('register')}
+              
               <form onSubmit={handleRegister} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="register-email">Email</Label>
