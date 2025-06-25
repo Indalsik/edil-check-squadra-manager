@@ -5,10 +5,21 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDatabase } from '@/contexts/DatabaseContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { Building2, Moon, Sun, Database, Server } from 'lucide-react'
+import { Building2, Moon, Sun, Database, Server, Trash2, Calendar } from 'lucide-react'
 import { toast } from 'sonner'
 
 export const LoginPage = () => {
@@ -65,6 +76,120 @@ export const LoginPage = () => {
       setIsLoading(false)
     }
   }
+
+  const getDatabaseCreationDate = () => {
+    if (mode === 'local') {
+      const data = localStorage.getItem('edilcheck_data')
+      if (data) {
+        try {
+          const parsedData = JSON.parse(data)
+          // Se non c'è una data di creazione salvata, usiamo la data del primo worker
+          if (parsedData.workers && parsedData.workers.length > 0) {
+            const firstWorker = parsedData.workers[0]
+            if (firstWorker.created_at) {
+              return new Date(firstWorker.created_at).toLocaleDateString('it-IT')
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing database data:', error)
+        }
+      }
+      return 'Non disponibile'
+    } else {
+      // Per il database remoto, potremmo fare una chiamata API per ottenere questa info
+      return 'Connesso al server'
+    }
+  }
+
+  const handleDeleteDatabase = () => {
+    if (mode === 'local') {
+      // Cancella tutti i dati locali
+      localStorage.removeItem('edilcheck_data')
+      localStorage.removeItem('edilcheck_users')
+      localStorage.removeItem('edilcheck_user')
+      localStorage.removeItem('edilcheck_token')
+      toast.success('Database locale cancellato con successo')
+    } else {
+      toast.error('Impossibile cancellare il database remoto da qui')
+    }
+  }
+
+  const DatabaseInfoSection = () => (
+    <div className="space-y-3 pt-4 border-t">
+      <Label className="text-sm font-medium">Modalità Database</Label>
+      <Select value={mode} onValueChange={(value: 'local' | 'remote') => setMode(value)}>
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="local">
+            <div className="flex items-center gap-2">
+              <Database className="h-4 w-4 text-blue-600" />
+              <span>Database Locale</span>
+            </div>
+          </SelectItem>
+          <SelectItem value="remote">
+            <div className="flex items-center gap-2">
+              <Server className="h-4 w-4 text-orange-600" />
+              <span>Database Remoto</span>
+            </div>
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">
+        {mode === 'local' 
+          ? 'I dati saranno salvati nel browser locale' 
+          : 'I dati saranno salvati sul server remoto'
+        }
+      </p>
+      
+      {/* Database Creation Date */}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Calendar className="h-3 w-3" />
+        <span>
+          {mode === 'local' 
+            ? `Database creato: ${getDatabaseCreationDate()}`
+            : 'Connesso al server remoto'
+          }
+        </span>
+      </div>
+      
+      {/* Delete Database Button */}
+      {mode === 'local' && (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <Trash2 className="h-3 w-3 mr-2" />
+              Cancella Database Locale
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Conferma cancellazione</AlertDialogTitle>
+              <AlertDialogDescription>
+                Sei sicuro di voler cancellare tutti i dati del database locale? 
+                Questa azione eliminerà definitivamente tutti gli operai, cantieri, 
+                ore di lavoro e pagamenti salvati. L'azione non può essere annullata.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Annulla</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={handleDeleteDatabase}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Cancella Database
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </div>
+  )
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-edil-blue to-edil-dark-blue p-4">
@@ -125,35 +250,7 @@ export const LoginPage = () => {
                 </Button>
               </form>
               
-              {/* Database Selection */}
-              <div className="space-y-3 pt-4 border-t">
-                <Label className="text-sm font-medium">Modalità Database</Label>
-                <Select value={mode} onValueChange={(value: 'local' | 'remote') => setMode(value)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="local">
-                      <div className="flex items-center gap-2">
-                        <Database className="h-4 w-4 text-blue-600" />
-                        <span>Database Locale</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="remote">
-                      <div className="flex items-center gap-2">
-                        <Server className="h-4 w-4 text-orange-600" />
-                        <span>Database Remoto</span>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {mode === 'local' 
-                    ? 'I dati saranno salvati nel browser locale' 
-                    : 'I dati saranno salvati sul server remoto'
-                  }
-                </p>
-              </div>
+              <DatabaseInfoSection />
             </TabsContent>
             
             <TabsContent value="register" className="space-y-4">
@@ -193,35 +290,7 @@ export const LoginPage = () => {
                 </Button>
               </form>
               
-              {/* Database Selection for Register tab too */}
-              <div className="space-y-3 pt-4 border-t">
-                <Label className="text-sm font-medium">Modalità Database</Label>
-                <Select value={mode} onValueChange={(value: 'local' | 'remote') => setMode(value)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="local">
-                      <div className="flex items-center gap-2">
-                        <Database className="h-4 w-4 text-blue-600" />
-                        <span>Database Locale</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="remote">
-                      <div className="flex items-center gap-2">
-                        <Server className="h-4 w-4 text-orange-600" />
-                        <span>Database Remoto</span>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  {mode === 'local' 
-                    ? 'I dati saranno salvati nel browser locale' 
-                    : 'I dati saranno salvati sul server remoto'
-                  }
-                </p>
-              </div>
+              <DatabaseInfoSection />
             </TabsContent>
           </Tabs>
         </CardContent>
