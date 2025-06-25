@@ -1,129 +1,205 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Users, Clock, MapPin, DollarSign, AlertTriangle, CheckCircle } from "lucide-react"
+import { Users, Clock, Calendar, MapPin, Wallet, TrendingUp, AlertCircle, CheckCircle } from "lucide-react"
 
-export function DashboardOverview() {
+interface DashboardOverviewProps {
+  onSectionChange: (section: string) => void;
+}
+
+export function DashboardOverview({ onSectionChange }: DashboardOverviewProps) {
   const stats = [
     {
       title: "Operai Attivi",
       value: "12",
-      description: "In servizio oggi",
+      description: "3 in più rispetto al mese scorso",
       icon: Users,
       color: "text-blue-600",
+      bgColor: "bg-blue-100",
+      action: () => onSectionChange("workers")
     },
     {
-      title: "Ore Lavorate",
-      value: "96",
-      description: "Questa settimana",
+      title: "Ore Lavorate Oggi",
+      value: "94",
+      description: "Media di 7.8 ore per operaio",
       icon: Clock,
-      color: "text-edil-orange",
-    },
-    {
-      title: "Cantieri Aperti",
-      value: "5",
-      description: "Progetti attivi",
-      icon: MapPin,
       color: "text-green-600",
+      bgColor: "bg-green-100",
+      action: () => onSectionChange("timetracking")
     },
     {
-      title: "Pagamenti da Fare",
-      value: "€ 8,450",
-      description: "Settimana corrente",
-      icon: DollarSign,
-      color: "text-red-600",
+      title: "Permessi Pendenti",
+      value: "3",
+      description: "Da approvare questa settimana",
+      icon: Calendar,
+      color: "text-yellow-600",
+      bgColor: "bg-yellow-100",
+      action: () => onSectionChange("permissions")
+    },
+    {
+      title: "Cantieri Attivi",
+      value: "5",
+      description: "2 nuovi progetti iniziati",
+      icon: MapPin,
+      color: "text-purple-600",
+      bgColor: "bg-purple-100",
+      action: () => onSectionChange("sites")
     },
   ]
 
-  const recentActivity = [
+  const recentActivities = [
     {
-      type: "Ore registrate",
+      id: 1,
+      type: "clock-in",
       worker: "Marco Rossi",
-      hours: "8h",
-      location: "Cantiere Via Roma",
-      status: "completed",
-      time: "2 ore fa"
+      action: "ha iniziato il turno",
+      time: "08:30",
+      site: "Via Roma 123"
     },
     {
-      type: "Permesso richiesto",
+      id: 2,
+      type: "permission",
       worker: "Luca Bianchi",
-      hours: "1 giorno",
-      location: "Permesso personale",
-      status: "pending",
-      time: "3 ore fa"
+      action: "ha richiesto permesso",
+      time: "09:15",
+      site: "3 giorni a Marzo"
     },
     {
-      type: "Pagamento effettuato",
+      id: 3,
+      type: "completion",
       worker: "Antonio Verde",
-      hours: "€ 720",
-      location: "Settimana 42",
-      status: "completed",
-      time: "1 giorno fa"
+      action: "ha completato il lavoro",
+      time: "17:00",
+      site: "Piazza Garibaldi 45"
+    },
+  ]
+
+  const paymentsPreview = [
+    {
+      worker: "Francesco Neri",
+      amount: "€1,240",
+      period: "15-30 Gennaio",
+      status: "pending"
+    },
+    {
+      worker: "Marco Rossi",
+      amount: "€1,580",
+      period: "15-30 Gennaio", 
+      status: "paid"
     },
   ]
 
   return (
     <div className="space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold text-gray-900">Dashboard</h2>
+        <p className="text-gray-600 mt-2">Panoramica generale della tua squadra edile</p>
+      </div>
+
       {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <Card key={stat.title} className="hover:shadow-lg transition-shadow">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {stats.map((stat, index) => (
+          <Card key={index} className="hover:shadow-lg transition-shadow cursor-pointer" onClick={stat.action}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+              <CardTitle className="text-sm font-medium text-gray-600">
                 {stat.title}
               </CardTitle>
-              <stat.icon className={`h-5 w-5 ${stat.color}`} />
+              <div className={`${stat.bgColor} p-2 rounded-lg`}>
+                <stat.icon className={`h-5 w-5 ${stat.color}`} />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-              <p className="text-xs text-muted-foreground">{stat.description}</p>
+              <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
+              <p className="text-xs text-gray-600 mt-1">
+                {stat.description}
+              </p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Attività Recenti
-          </CardTitle>
-          <CardDescription>
-            Ultime operazioni registrate nel sistema
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {recentActivity.map((activity, index) => (
-              <div key={index} className="flex items-center justify-between border-b pb-4 last:border-b-0">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    {activity.status === 'completed' ? (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                    ) : (
-                      <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                    )}
-                    <div>
-                      <p className="font-medium">{activity.type}</p>
-                      <p className="text-sm text-muted-foreground">{activity.worker}</p>
-                    </div>
-                  </div>
-                  <div className="text-sm">
-                    <Badge variant={activity.status === 'completed' ? 'default' : 'secondary'}>
-                      {activity.hours}
-                    </Badge>
-                    <p className="text-muted-foreground mt-1">{activity.location}</p>
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Recent Activities */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Attività Recenti
+            </CardTitle>
+            <CardDescription>
+              Ultimi movimenti della squadra
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {recentActivities.map((activity) => (
+              <div key={activity.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 bg-edil-blue rounded-full"></div>
+                  <div>
+                    <p className="font-medium text-sm">
+                      <span className="text-edil-blue">{activity.worker}</span> {activity.action}
+                    </p>
+                    <p className="text-xs text-gray-600">{activity.site}</p>
                   </div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  {activity.time}
+                <span className="text-xs text-gray-500">{activity.time}</span>
+              </div>
+            ))}
+            <Button 
+              variant="outline" 
+              className="w-full mt-4"
+              onClick={() => onSectionChange("timetracking")}
+            >
+              Vedi Tutte le Attività
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Payments Preview */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Wallet className="h-5 w-5" />
+              Pagamenti in Sospeso
+            </CardTitle>
+            <CardDescription>
+              Pagamenti da elaborare questa settimana
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {paymentsPreview.map((payment, index) => (
+              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <p className="font-medium text-sm">{payment.worker}</p>
+                  <p className="text-xs text-gray-600">{payment.period}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-edil-blue">{payment.amount}</p>
+                  <Badge 
+                    className={payment.status === 'paid' 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-yellow-100 text-yellow-800'
+                    }
+                  >
+                    {payment.status === 'paid' ? (
+                      <><CheckCircle className="w-3 h-3 mr-1" /> Pagato</>
+                    ) : (
+                      <><AlertCircle className="w-3 h-3 mr-1" /> In Sospeso</>
+                    )}
+                  </Badge>
                 </div>
               </div>
             ))}
-          </div>
-        </CardContent>
-      </Card>
+            <Button 
+              className="w-full mt-4 bg-edil-orange hover:bg-edil-orange/90"
+              onClick={() => onSectionChange("payments")}
+            >
+              Gestisci Pagamenti
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

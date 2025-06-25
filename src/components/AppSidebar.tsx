@@ -15,47 +15,52 @@ import {
 const menuItems = [
   {
     title: "Dashboard",
-    url: "#",
+    section: "dashboard",
     icon: Home,
   },
   {
     title: "Operai",
-    url: "#",
+    section: "workers",
     icon: Users,
   },
   {
     title: "Ore di Lavoro",
-    url: "#",
+    section: "timetracking",
     icon: Clock,
   },
   {
     title: "Permessi",
-    url: "#",
+    section: "permissions",
     icon: Calendar,
   },
   {
     title: "Cantieri",
-    url: "#",
+    section: "sites",
     icon: MapPin,
   },
   {
     title: "Pagamenti",
-    url: "#",
+    section: "payments",
     icon: Wallet,
   },
   {
     title: "Archivio",
-    url: "#",
+    section: "archive",
     icon: FileText,
   },
   {
     title: "Impostazioni",
-    url: "#",
+    section: "settings",
     icon: Settings,
   },
 ]
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  activeSection: string;
+  onSectionChange: (section: string) => void;
+}
+
+export function AppSidebar({ activeSection, onSectionChange }: AppSidebarProps) {
   return (
     <Sidebar className="border-r-0">
       <SidebarHeader className="border-b border-sidebar-border px-6 py-4">
@@ -79,13 +84,14 @@ export function AppSidebar() {
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton 
-                    asChild 
-                    className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+                    onClick={() => onSectionChange(item.section)}
+                    isActive={activeSection === item.section}
+                    className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors cursor-pointer"
                   >
-                    <a href={item.url} className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex items-center gap-3 px-3 py-2">
                       <item.icon className="w-5 h-5" />
                       <span className="font-medium">{item.title}</span>
-                    </a>
+                    </div>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

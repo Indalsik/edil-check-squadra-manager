@@ -13,67 +13,53 @@ const Index = () => {
   const renderContent = () => {
     switch (activeSection) {
       case "dashboard":
-        return <DashboardOverview />
+        return <DashboardOverview onSectionChange={setActiveSection} />
       case "workers":
         return <WorkersManagement />
       case "timetracking":
         return <TimeTracking />
       case "payments":
         return <PaymentsManagement />
+      case "permissions":
+        return (
+          <div className="p-6">
+            <h2 className="text-2xl font-bold mb-4">Gestione Permessi</h2>
+            <p className="text-muted-foreground">Sezione in sviluppo...</p>
+          </div>
+        )
+      case "sites":
+        return (
+          <div className="p-6">
+            <h2 className="text-2xl font-bold mb-4">Gestione Cantieri</h2>
+            <p className="text-muted-foreground">Sezione in sviluppo...</p>
+          </div>
+        )
+      case "archive":
+        return (
+          <div className="p-6">
+            <h2 className="text-2xl font-bold mb-4">Archivio</h2>
+            <p className="text-muted-foreground">Sezione in sviluppo...</p>
+          </div>
+        )
+      case "settings":
+        return (
+          <div className="p-6">
+            <h2 className="text-2xl font-bold mb-4">Impostazioni</h2>
+            <p className="text-muted-foreground">Sezione in sviluppo...</p>
+          </div>
+        )
       default:
-        return <DashboardOverview />
+        return <DashboardOverview onSectionChange={setActiveSection} />
     }
   }
 
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
-        <AppSidebar />
+        <AppSidebar activeSection={activeSection} onSectionChange={setActiveSection} />
         <main className="flex-1 p-6 bg-gray-50">
           <div className="mb-6">
             <SidebarTrigger className="mb-4" />
-            <div className="flex gap-4 mb-6">
-              <button
-                onClick={() => setActiveSection("dashboard")}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeSection === "dashboard"
-                    ? "bg-edil-blue text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                Dashboard
-              </button>
-              <button
-                onClick={() => setActiveSection("workers")}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeSection === "workers"
-                    ? "bg-edil-blue text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                Operai
-              </button>
-              <button
-                onClick={() => setActiveSection("timetracking")}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeSection === "timetracking"
-                    ? "bg-edil-blue text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                Ore di Lavoro
-              </button>
-              <button
-                onClick={() => setActiveSection("payments")}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  activeSection === "payments"
-                    ? "bg-edil-blue text-white"
-                    : "bg-white text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                Pagamenti
-              </button>
-            </div>
           </div>
           {renderContent()}
         </main>
