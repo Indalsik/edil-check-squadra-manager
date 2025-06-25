@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
@@ -12,7 +11,6 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3002;
-const JWT_SECRET = process.env.JWT_SECRET || 'edil-check-database-secret-key';
 
 // CORS configuration - MIGLIORATA per essere più permissiva
 app.use(cors({
@@ -58,7 +56,9 @@ app.use(cors({
     'Accept',
     'Origin',
     'Access-Control-Request-Method',
-    'Access-Control-Request-Headers'
+    'Access-Control-Request-Headers',
+    'X-User-Email',
+    'X-User-Password'
   ],
   exposedHeaders: ['Authorization'],
   maxAge: 86400 // 24 ore
@@ -68,7 +68,7 @@ app.use(cors({
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,PATCH');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-User-Email, X-User-Password');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.sendStatus(200);
 });
@@ -196,23 +196,32 @@ try {
   process.exit(1);
 }
 
-// Auth middleware
-const authenticateToken = (req, res, next) => {
+// Auth middleware - ora usa email e password negli headers
+const authenticateUser = (req, res, next) => {
   try {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+    const email = req.headers['x-user-email'];
+    const password = req.headers['x-user-password'];
 
-    if (!token) {
-      return res.status(401).json({ error: 'Token mancante' });
+    if (!email || !password) {
+      return res.status(401).json({ error: 'Email e password richiesti negli headers' });
     }
 
-    jwt.verify(token, JWT_SECRET, (err, user) => {
-      if (err) {
-        return res.status(403).json({ error: 'Token non valido' });
-      }
-      req.user = user;
-      next();
-    });
+    // Verifica credenziali
+    const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
+    const user = stmt.get([email]);
+    
+    if (!user) {
+      return res.status(401).json({ error: 'Utente non trovato' });
+    }
+
+    // Verifica password
+    const validPassword = bcrypt.compareSync(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ error: 'Password non valida' });
+    }
+
+    req.user = { userId: user.id, email: user.email };
+    next();
   } catch (error) {
     console.error('❌ Auth middleware error:', error);
     res.status(500).json({ error: 'Errore di autenticazione' });
@@ -225,7 +234,8 @@ app.get('/health', (req, res) => {
     status: 'OK', 
     service: 'Edil-Check Database Server',
     timestamp: new Date().toISOString(),
-    cors: 'enabled'
+    cors: 'enabled',
+    auth: 'simple-credentials'
   });
 });
 
@@ -249,9 +259,11 @@ app.post('/auth/register', async (req, res) => {
     const result = insertStmt.run([email, hashedPassword]);
     saveDatabase();
     
-    const token = jwt.sign({ userId: result.lastID, email }, JWT_SECRET);
-    
-    res.json({ token, user: { id: result.lastID, email } });
+    res.json({ 
+      success: true,
+      message: 'Registrazione completata',
+      user: { id: result.lastID, email } 
+    });
   } catch (error) {
     console.error('❌ Registration error:', error);
     res.status(500).json({ error: 'Errore durante la registrazione' });
@@ -278,9 +290,11 @@ app.post('/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Credenziali non valide' });
     }
 
-    const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET);
-    
-    res.json({ token, user: { id: user.id, email: user.email } });
+    res.json({ 
+      success: true,
+      message: 'Login effettuato',
+      user: { id: user.id, email: user.email } 
+    });
   } catch (error) {
     console.error('❌ Login error:', error);
     res.status(500).json({ error: 'Errore durante il login' });
@@ -291,12 +305,12 @@ app.post('/auth/logout', (req, res) => {
   res.json({ message: 'Logout effettuato' });
 });
 
-app.get('/auth/me', authenticateToken, (req, res) => {
+app.get('/auth/me', authenticateUser, (req, res) => {
   res.json({ user: req.user });
 });
 
 // Workers routes
-app.get('/workers', authenticateToken, (req, res) => {
+app.get('/workers', authenticateUser, (req, res) => {
   try {
     const stmt = db.prepare('SELECT * FROM workers WHERE user_id = ? ORDER BY name');
     const workers = stmt.all([req.user.userId]);
@@ -306,7 +320,7 @@ app.get('/workers', authenticateToken, (req, res) => {
   }
 });
 
-app.post('/workers', authenticateToken, (req, res) => {
+app.post('/workers', authenticateUser, (req, res) => {
   try {
     const { name, role, phone, email, status, hourlyRate } = req.body;
     const stmt = db.prepare(`
@@ -324,7 +338,7 @@ app.post('/workers', authenticateToken, (req, res) => {
   }
 });
 
-app.put('/workers/:id', authenticateToken, (req, res) => {
+app.put('/workers/:id', authenticateUser, (req, res) => {
   try {
     const { id } = req.params;
     const { name, role, phone, email, status, hourlyRate } = req.body;
@@ -345,7 +359,7 @@ app.put('/workers/:id', authenticateToken, (req, res) => {
   }
 });
 
-app.delete('/workers/:id', authenticateToken, (req, res) => {
+app.delete('/workers/:id', authenticateUser, (req, res) => {
   try {
     const { id } = req.params;
     const stmt = db.prepare('DELETE FROM workers WHERE id = ? AND user_id = ?');
@@ -358,7 +372,7 @@ app.delete('/workers/:id', authenticateToken, (req, res) => {
 });
 
 // Sites routes
-app.get('/sites', authenticateToken, (req, res) => {
+app.get('/sites', authenticateUser, (req, res) => {
   try {
     const stmt = db.prepare('SELECT * FROM sites WHERE user_id = ? ORDER BY name');
     const sites = stmt.all([req.user.userId]);
@@ -368,7 +382,7 @@ app.get('/sites', authenticateToken, (req, res) => {
   }
 });
 
-app.post('/sites', authenticateToken, (req, res) => {
+app.post('/sites', authenticateUser, (req, res) => {
   try {
     const { name, owner, address, status, startDate, estimatedEnd } = req.body;
     const stmt = db.prepare(`
@@ -386,7 +400,7 @@ app.post('/sites', authenticateToken, (req, res) => {
   }
 });
 
-app.put('/sites/:id', authenticateToken, (req, res) => {
+app.put('/sites/:id', authenticateUser, (req, res) => {
   try {
     const { id } = req.params;
     const { name, owner, address, status, startDate, estimatedEnd } = req.body;
@@ -407,7 +421,7 @@ app.put('/sites/:id', authenticateToken, (req, res) => {
   }
 });
 
-app.delete('/sites/:id', authenticateToken, (req, res) => {
+app.delete('/sites/:id', authenticateUser, (req, res) => {
   try {
     const { id } = req.params;
     const stmt = db.prepare('DELETE FROM sites WHERE id = ? AND user_id = ?');
@@ -420,7 +434,7 @@ app.delete('/sites/:id', authenticateToken, (req, res) => {
 });
 
 // Time entries routes
-app.get('/time-entries', authenticateToken, (req, res) => {
+app.get('/time-entries', authenticateUser, (req, res) => {
   try {
     const stmt = db.prepare(`
       SELECT te.*, w.name as workerName, s.name as siteName 
@@ -437,7 +451,7 @@ app.get('/time-entries', authenticateToken, (req, res) => {
   }
 });
 
-app.post('/time-entries', authenticateToken, (req, res) => {
+app.post('/time-entries', authenticateUser, (req, res) => {
   try {
     const { workerId, siteId, date, startTime, endTime, totalHours, status } = req.body;
     const stmt = db.prepare(`
@@ -461,7 +475,7 @@ app.post('/time-entries', authenticateToken, (req, res) => {
   }
 });
 
-app.put('/time-entries/:id', authenticateToken, (req, res) => {
+app.put('/time-entries/:id', authenticateUser, (req, res) => {
   try {
     const { id } = req.params;
     const { workerId, siteId, date, startTime, endTime, totalHours, status } = req.body;
@@ -488,7 +502,7 @@ app.put('/time-entries/:id', authenticateToken, (req, res) => {
   }
 });
 
-app.delete('/time-entries/:id', authenticateToken, (req, res) => {
+app.delete('/time-entries/:id', authenticateUser, (req, res) => {
   try {
     const { id } = req.params;
     const stmt = db.prepare('DELETE FROM time_entries WHERE id = ? AND user_id = ?');
@@ -501,7 +515,7 @@ app.delete('/time-entries/:id', authenticateToken, (req, res) => {
 });
 
 // Payments routes
-app.get('/payments', authenticateToken, (req, res) => {
+app.get('/payments', authenticateUser, (req, res) => {
   try {
     const stmt = db.prepare(`
       SELECT p.*, w.name as workerName 
@@ -517,7 +531,7 @@ app.get('/payments', authenticateToken, (req, res) => {
   }
 });
 
-app.post('/payments', authenticateToken, (req, res) => {
+app.post('/payments', authenticateUser, (req, res) => {
   try {
     const { workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method } = req.body;
     const stmt = db.prepare(`
@@ -540,7 +554,7 @@ app.post('/payments', authenticateToken, (req, res) => {
   }
 });
 
-app.put('/payments/:id', authenticateToken, (req, res) => {
+app.put('/payments/:id', authenticateUser, (req, res) => {
   try {
     const { id } = req.params;
     const { workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method } = req.body;
@@ -566,7 +580,7 @@ app.put('/payments/:id', authenticateToken, (req, res) => {
   }
 });
 
-app.delete('/payments/:id', authenticateToken, (req, res) => {
+app.delete('/payments/:id', authenticateUser, (req, res) => {
   try {
     const { id } = req.params;
     const stmt = db.prepare('DELETE FROM payments WHERE id = ? AND user_id = ?');
@@ -579,33 +593,43 @@ app.delete('/payments/:id', authenticateToken, (req, res) => {
 });
 
 // Dashboard stats
-app.get('/dashboard/stats', authenticateToken, (req, res) => {
+app.get('/dashboard/stats', authenticateUser, (req, res) => {
   try {
+    console.log('📊 Getting dashboard stats for user:', req.user.userId);
+    
+    // Get active workers count
     const activeWorkersStmt = db.prepare('SELECT COUNT(*) as count FROM workers WHERE user_id = ? AND status = ?');
     const activeWorkers = activeWorkersStmt.get([req.user.userId, 'Attivo'])?.count || 0;
     
+    // Get active sites count
     const activeSitesStmt = db.prepare('SELECT COUNT(*) as count FROM sites WHERE user_id = ? AND status = ?');
     const activeSites = activeSitesStmt.get([req.user.userId, 'Attivo'])?.count || 0;
     
+    // Get pending payments count
     const pendingPaymentsStmt = db.prepare('SELECT COUNT(*) as count FROM payments WHERE user_id = ? AND status = ?');
     const pendingPayments = pendingPaymentsStmt.get([req.user.userId, 'Da Pagare'])?.count || 0;
     
+    // Get today's hours
     const todayHoursStmt = db.prepare('SELECT COALESCE(SUM(total_hours), 0) as total FROM time_entries WHERE user_id = ? AND date = date("now")');
     const todayHours = todayHoursStmt.get([req.user.userId])?.total || 0;
 
-    res.json({
+    const stats = {
       activeWorkers,
       activeSites,
       pendingPayments,
       todayHours
-    });
+    };
+
+    console.log('✅ Dashboard stats:', stats);
+    res.json(stats);
   } catch (error) {
-    res.status(500).json({ error: 'Errore nel recupero statistiche' });
+    console.error('❌ Dashboard stats error:', error);
+    res.status(500).json({ error: 'Errore nel recupero statistiche', details: error.message });
   }
 });
 
 // Site workers
-app.get('/sites/:siteId/workers', authenticateToken, (req, res) => {
+app.get('/sites/:siteId/workers', authenticateUser, (req, res) => {
   try {
     const { siteId } = req.params;
     const stmt = db.prepare(`
@@ -624,7 +648,7 @@ app.get('/sites/:siteId/workers', authenticateToken, (req, res) => {
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Edil-Check Database Server running on http://localhost:${PORT}`);
   console.log(`📊 Database file: ${dbPath}`);
-  console.log(`🔑 JWT Secret: ${JWT_SECRET.substring(0, 10)}...`);
+  console.log(`🔐 Authentication: Simple credentials (email/password in headers)`);
   console.log(`🌐 CORS enabled for all origins (development mode)`);
 });
 

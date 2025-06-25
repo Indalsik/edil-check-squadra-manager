@@ -8,6 +8,17 @@ const getApiBaseUrl = () => {
   return 'http://localhost:3002'
 }
 
+// Store current user credentials for API requests
+let currentUserCredentials: { email: string; password: string } | null = null
+
+export const setUserCredentials = (email: string, password: string) => {
+  currentUserCredentials = { email, password }
+}
+
+export const clearUserCredentials = () => {
+  currentUserCredentials = null
+}
+
 // Create axios instance with dynamic base URL
 const createApiInstance = () => {
   const baseURL = getApiBaseUrl()
@@ -28,12 +39,12 @@ const createApiInstance = () => {
         options.body = JSON.stringify(config.data)
       }
 
-      // Always add token if available (except for auth endpoints)
-      const token = localStorage.getItem('edilcheck_token')
-      if (token && !config.url.includes('/auth/')) {
+      // Add user credentials to headers for authenticated requests
+      if (currentUserCredentials && !config.url.includes('/auth/login') && !config.url.includes('/auth/register')) {
         options.headers = {
           ...options.headers,
-          'Authorization': `Bearer ${token}`
+          'X-User-Email': currentUserCredentials.email,
+          'X-User-Password': currentUserCredentials.password
         }
       }
 
@@ -66,9 +77,8 @@ const createApiInstance = () => {
           
           // Handle authentication errors
           if (response.status === 401 || response.status === 403) {
-            console.warn('🔒 Authentication failed, clearing token')
-            localStorage.removeItem('edilcheck_token')
-            localStorage.removeItem('edilcheck_user')
+            console.warn('🔒 Authentication failed, clearing credentials')
+            clearUserCredentials()
           }
           
           throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`)
@@ -115,17 +125,30 @@ export const authAPI = {
   login: async (email: string, password: string) => {
     console.log('🔐 Attempting login for:', email)
     const response = await api.post('/auth/login', { email, password })
+    
+    // Store credentials for future API calls
+    if (response.data.success) {
+      setUserCredentials(email, password)
+    }
+    
     return response.data
   },
   
   register: async (email: string, password: string) => {
     console.log('📝 Attempting registration for:', email)
     const response = await api.post('/auth/register', { email, password })
+    
+    // Store credentials for future API calls
+    if (response.data.success) {
+      setUserCredentials(email, password)
+    }
+    
     return response.data
   },
   
   logout: async () => {
     await api.post('/auth/logout')
+    clearUserCredentials()
   },
   
   me: async () => {
