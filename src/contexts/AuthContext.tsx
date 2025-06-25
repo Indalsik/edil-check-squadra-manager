@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { authAPI } from '@/lib/api'
 
 interface User {
   id: number
@@ -29,11 +28,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Check for existing token
-    const token = localStorage.getItem('edilcheck_token')
+    // Check for existing user in localStorage
     const savedUser = localStorage.getItem('edilcheck_user')
     
-    if (token && savedUser) {
+    if (savedUser) {
       setUser(JSON.parse(savedUser))
     }
     
@@ -42,48 +40,60 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await authAPI.login(email, password)
+      // Simple browser-based authentication
+      const users = JSON.parse(localStorage.getItem('edilcheck_users') || '[]')
+      const user = users.find((u: any) => u.email === email && u.password === password)
       
-      localStorage.setItem('edilcheck_token', response.token)
-      localStorage.setItem('edilcheck_user', JSON.stringify(response.user))
-      setUser(response.user)
-      
-      return { success: true }
+      if (user) {
+        const userInfo = { id: user.id, email: user.email }
+        localStorage.setItem('edilcheck_user', JSON.stringify(userInfo))
+        setUser(userInfo)
+        return { success: true }
+      } else {
+        return { success: false, error: 'Credenziali non valide' }
+      }
     } catch (error: any) {
       return { 
         success: false, 
-        error: error.response?.data?.error || 'Errore durante il login' 
+        error: 'Errore durante il login' 
       }
     }
   }
 
   const register = async (email: string, password: string) => {
     try {
-      const response = await authAPI.register(email, password)
+      const users = JSON.parse(localStorage.getItem('edilcheck_users') || '[]')
       
-      localStorage.setItem('edilcheck_token', response.token)
-      localStorage.setItem('edilcheck_user', JSON.stringify(response.user))
-      setUser(response.user)
+      // Check if user already exists
+      if (users.find((u: any) => u.email === email)) {
+        return { success: false, error: 'Email già registrata' }
+      }
+      
+      // Add new user
+      const newUser = {
+        id: Date.now(),
+        email,
+        password
+      }
+      users.push(newUser)
+      localStorage.setItem('edilcheck_users', JSON.stringify(users))
+      
+      const userInfo = { id: newUser.id, email: newUser.email }
+      localStorage.setItem('edilcheck_user', JSON.stringify(userInfo))
+      setUser(userInfo)
       
       return { success: true }
     } catch (error: any) {
       return { 
         success: false, 
-        error: error.response?.data?.error || 'Errore durante la registrazione' 
+        error: 'Errore durante la registrazione' 
       }
     }
   }
 
   const logout = async () => {
-    try {
-      await authAPI.logout()
-    } catch (error) {
-      // Ignore logout errors
-    } finally {
-      localStorage.removeItem('edilcheck_token')
-      localStorage.removeItem('edilcheck_user')
-      setUser(null)
-    }
+    localStorage.removeItem('edilcheck_user')
+    setUser(null)
   }
 
   return (
