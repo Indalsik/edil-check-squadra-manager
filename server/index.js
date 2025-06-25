@@ -14,11 +14,19 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-// Middleware
+// Enhanced CORS configuration
 app.use(cors({
-  origin: 'http://localhost:8080',
-  credentials: true
+  origin: [
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
+    /^https:\/\/.*\.webcontainer-api\.io$/,
+    /^https:\/\/.*\.local-credentialless\.webcontainer-api\.io$/
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 app.use(express.json());
 app.use(session({
   secret: JWT_SECRET,
@@ -27,113 +35,150 @@ app.use(session({
   cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 } // 24 hours
 }));
 
-// Database setup
-const dbPath = path.join(__dirname, 'database.db');
-const db = new Database(dbPath);
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Database setup with better error handling
+let db;
+try {
+  const dbPath = path.join(__dirname, 'database.db');
+  console.log('📊 Initializing database at:', dbPath);
+  db = new Database(dbPath);
+  
+  // Test database connection
+  db.exec('SELECT 1');
+  console.log('✅ Database connection successful');
+} catch (error) {
+  console.error('❌ Database initialization failed:', error);
+  process.exit(1);
+}
 
 // Initialize database tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
 
-  CREATE TABLE IF NOT EXISTS workers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    role TEXT NOT NULL,
-    phone TEXT NOT NULL,
-    email TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'Attivo',
-    hourly_rate REAL NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
+    CREATE TABLE IF NOT EXISTS workers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Attivo',
+      hourly_rate REAL NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
 
-  CREATE TABLE IF NOT EXISTS sites (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    owner TEXT NOT NULL,
-    address TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'Attivo',
-    start_date DATE NOT NULL,
-    estimated_end DATE NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
+    CREATE TABLE IF NOT EXISTS sites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      owner TEXT NOT NULL,
+      address TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Attivo',
+      start_date DATE NOT NULL,
+      estimated_end DATE NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
 
-  CREATE TABLE IF NOT EXISTS time_entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    worker_id INTEGER NOT NULL,
-    site_id INTEGER NOT NULL,
-    date DATE NOT NULL,
-    start_time TIME NOT NULL,
-    end_time TIME NOT NULL,
-    total_hours REAL NOT NULL,
-    status TEXT NOT NULL DEFAULT 'Confermato',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
-    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
-  );
+    CREATE TABLE IF NOT EXISTS time_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      worker_id INTEGER NOT NULL,
+      site_id INTEGER NOT NULL,
+      date DATE NOT NULL,
+      start_time TIME NOT NULL,
+      end_time TIME NOT NULL,
+      total_hours REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'Confermato',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
+      FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
+    );
 
-  CREATE TABLE IF NOT EXISTS payments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    worker_id INTEGER NOT NULL,
-    week TEXT NOT NULL,
-    hours REAL NOT NULL,
-    hourly_rate REAL NOT NULL,
-    total_amount REAL NOT NULL,
-    overtime REAL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'Da Pagare',
-    paid_date DATE,
-    method TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE
-  );
+    CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      worker_id INTEGER NOT NULL,
+      week TEXT NOT NULL,
+      hours REAL NOT NULL,
+      hourly_rate REAL NOT NULL,
+      total_amount REAL NOT NULL,
+      overtime REAL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'Da Pagare',
+      paid_date DATE,
+      method TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE
+    );
 
-  CREATE TABLE IF NOT EXISTS site_workers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    site_id INTEGER NOT NULL,
-    worker_id INTEGER NOT NULL,
-    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
-    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
-    UNIQUE(site_id, worker_id)
-  );
-`);
+    CREATE TABLE IF NOT EXISTS site_workers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      site_id INTEGER NOT NULL,
+      worker_id INTEGER NOT NULL,
+      assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
+      FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
+      UNIQUE(site_id, worker_id)
+    );
+  `);
+  console.log('✅ Database tables initialized');
+} catch (error) {
+  console.error('❌ Database table creation failed:', error);
+  process.exit(1);
+}
 
-// Auth middleware
+// Auth middleware with better error handling
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  try {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
 
-  if (!token) {
-    return res.sendStatus(401);
+    if (!token) {
+      console.log('❌ No token provided');
+      return res.status(401).json({ error: 'Token mancante' });
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+      if (err) {
+        console.log('❌ Token verification failed:', err.message);
+        return res.status(403).json({ error: 'Token non valido' });
+      }
+      req.user = user;
+      next();
+    });
+  } catch (error) {
+    console.error('❌ Auth middleware error:', error);
+    res.status(500).json({ error: 'Errore di autenticazione' });
   }
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.sendStatus(403);
-    req.user = user;
-    next();
-  });
 };
 
-// Auth routes
+// Auth routes with enhanced error handling
 app.post('/api/auth/register', async (req, res) => {
   try {
+    console.log('📝 Registration attempt for:', req.body.email);
     const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email e password sono richiesti' });
+    }
     
     // Check if user exists
     const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
     if (existingUser) {
+      console.log('❌ User already exists:', email);
       return res.status(400).json({ error: 'Email già registrata' });
     }
 
@@ -146,40 +191,50 @@ app.post('/api/auth/register', async (req, res) => {
     // Generate token
     const token = jwt.sign({ userId: result.lastInsertRowid, email }, JWT_SECRET);
     
+    console.log('✅ User registered successfully:', email);
     res.json({ token, user: { id: result.lastInsertRowid, email } });
   } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: 'Errore durante la registrazione' });
+    console.error('❌ Registration error:', error);
+    res.status(500).json({ error: 'Errore durante la registrazione', details: error.message });
   }
 });
 
 app.post('/api/auth/login', async (req, res) => {
   try {
+    console.log('🔐 Login attempt for:', req.body.email);
     const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email e password sono richiesti' });
+    }
     
     // Find user
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
     if (!user) {
+      console.log('❌ User not found:', email);
       return res.status(400).json({ error: 'Credenziali non valide' });
     }
 
     // Check password
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
+      console.log('❌ Invalid password for:', email);
       return res.status(400).json({ error: 'Credenziali non valide' });
     }
 
     // Generate token
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET);
     
+    console.log('✅ User logged in successfully:', email);
     res.json({ token, user: { id: user.id, email: user.email } });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Errore durante il login' });
+    console.error('❌ Login error:', error);
+    res.status(500).json({ error: 'Errore durante il login', details: error.message });
   }
 });
 
 app.post('/api/auth/logout', (req, res) => {
+  console.log('👋 User logged out');
   res.json({ message: 'Logout effettuato' });
 });
 
@@ -453,7 +508,7 @@ app.delete('/api/payments/:id', authenticateToken, (req, res) => {
 // Dashboard stats - FIXED VERSION
 app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
   try {
-    console.log('Getting dashboard stats for user:', req.user.userId);
+    console.log('📊 Getting dashboard stats for user:', req.user.userId);
     
     // Get active workers count
     const activeWorkersQuery = db.prepare('SELECT COUNT(*) as count FROM workers WHERE user_id = ? AND status = ?');
@@ -478,10 +533,10 @@ app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
       todayHours
     };
 
-    console.log('Dashboard stats:', stats);
+    console.log('✅ Dashboard stats:', stats);
     res.json(stats);
   } catch (error) {
-    console.error('Dashboard stats error:', error);
+    console.error('❌ Dashboard stats error:', error);
     res.status(500).json({ error: 'Errore nel recupero statistiche', details: error.message });
   }
 });
@@ -502,7 +557,48 @@ app.get('/api/sites/:siteId/workers', authenticateToken, (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('❌ Unhandled error:', err);
+  res.status(500).json({ error: 'Errore interno del server', details: err.message });
+});
+
+// Start server with better error handling
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📊 Database: ${dbPath}`);
+  console.log(`📊 Database: ${path.join(__dirname, 'database.db')}`);
+  console.log(`🌐 Server accessible from network on port ${PORT}`);
+});
+
+server.on('error', (error) => {
+  console.error('❌ Server error:', error);
+  if (error.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use`);
+    process.exit(1);
+  }
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('👋 SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('✅ Server closed');
+    if (db) {
+      db.close();
+      console.log('✅ Database closed');
+    }
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('👋 SIGINT received, shutting down gracefully');
+  server.close(() => {
+    console.log('✅ Server closed');
+    if (db) {
+      db.close();
+      console.log('✅ Database closed');
+    }
+    process.exit(0);
+  });
 });
