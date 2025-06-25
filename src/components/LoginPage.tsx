@@ -29,12 +29,15 @@ export const LoginPage = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('login')
   const [lastError, setLastError] = useState<{ type: 'login' | 'register', message: string } | null>(null)
-  const [remoteConfig, setRemoteConfig] = useState({
-    host: 'localhost',
-    port: '3002'
+  
+  // Local state for remote config to prevent immediate reloads
+  const [localRemoteConfig, setLocalRemoteConfig] = useState(() => {
+    const saved = localStorage.getItem('edilcheck_remote_config')
+    return saved ? JSON.parse(saved) : { host: 'localhost', port: '3002' }
   })
+  
   const { login, register } = useAuth()
-  const { mode, setMode, setRemoteConfig: setDatabaseRemoteConfig } = useDatabase()
+  const { mode, setMode, setRemoteConfig, isConnected, connectionError } = useDatabase()
   const { theme, toggleTheme } = useTheme()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -170,24 +173,28 @@ export const LoginPage = () => {
     setRegisterData({ email: '', password: '', confirmPassword: '' })
     
     if (newMode === 'remote') {
-      // Applica la configurazione remota
-      setDatabaseRemoteConfig(remoteConfig.host, remoteConfig.port)
+      // Apply remote configuration only when switching to remote mode
+      setRemoteConfig(localRemoteConfig.host, localRemoteConfig.port)
     }
   }
 
   const handleRemoteConfigChange = (field: 'host' | 'port', value: string) => {
-    const newConfig = { ...remoteConfig, [field]: value }
-    setRemoteConfig(newConfig)
-    if (mode === 'remote') {
-      console.log(`🔧 Updating remote config: ${newConfig.host}:${newConfig.port}`)
-      setDatabaseRemoteConfig(newConfig.host, newConfig.port)
-    }
+    const newConfig = { ...localRemoteConfig, [field]: value }
+    setLocalRemoteConfig(newConfig)
+    // Save to localStorage immediately but don't apply to database context yet
+    localStorage.setItem('edilcheck_remote_config', JSON.stringify(newConfig))
+  }
+
+  const applyRemoteConfig = () => {
+    console.log(`🔧 Applying remote config: ${localRemoteConfig.host}:${localRemoteConfig.port}`)
+    setRemoteConfig(localRemoteConfig.host, localRemoteConfig.port)
+    toast.success('Configurazione server aggiornata')
   }
 
   const testConnection = async () => {
     try {
-      console.log(`🧪 Testing connection to ${remoteConfig.host}:${remoteConfig.port}`)
-      const response = await fetch(`http://${remoteConfig.host}:${remoteConfig.port}/health`)
+      console.log(`🧪 Testing connection to ${localRemoteConfig.host}:${localRemoteConfig.port}`)
+      const response = await fetch(`http://${localRemoteConfig.host}:${localRemoteConfig.port}/health`)
       if (response.ok) {
         const data = await response.json()
         console.log('✅ Connection test successful:', data)
@@ -241,8 +248,8 @@ export const LoginPage = () => {
               <div className="text-sm space-y-1">
                 <p>Problemi di connessione al server remoto. Verifica che:</p>
                 <ul className="list-disc list-inside ml-2">
-                  <li>Il server sia in esecuzione sulla porta {remoteConfig.port}</li>
-                  <li>L'indirizzo {remoteConfig.host} sia corretto</li>
+                  <li>Il server sia in esecuzione sulla porta {localRemoteConfig.port}</li>
+                  <li>L'indirizzo {localRemoteConfig.host} sia corretto</li>
                   <li>Non ci siano firewall che bloccano la connessione</li>
                 </ul>
                 <p className="font-medium">
@@ -293,7 +300,7 @@ export const LoginPage = () => {
             <div>
               <Label className="text-xs text-orange-700">Host/IP</Label>
               <Input
-                value={remoteConfig.host}
+                value={localRemoteConfig.host}
                 onChange={(e) => handleRemoteConfigChange('host', e.target.value)}
                 placeholder="localhost"
                 className="text-sm h-8"
@@ -302,7 +309,7 @@ export const LoginPage = () => {
             <div>
               <Label className="text-xs text-orange-700">Porta</Label>
               <Input
-                value={remoteConfig.port}
+                value={localRemoteConfig.port}
                 onChange={(e) => handleRemoteConfigChange('port', e.target.value)}
                 placeholder="3002"
                 className="text-sm h-8"
@@ -312,23 +319,33 @@ export const LoginPage = () => {
           
           <div className="flex items-center justify-between">
             <p className="text-xs text-orange-600">
-              Server: http://{remoteConfig.host}:{remoteConfig.port}
+              Server: http://{localRemoteConfig.host}:{localRemoteConfig.port}
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={testConnection}
-              className="text-xs h-7"
-            >
-              Test Connessione
-            </Button>
+            <div className="flex gap-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={testConnection}
+                className="text-xs h-7"
+              >
+                Test
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={applyRemoteConfig}
+                className="text-xs h-7 bg-orange-100 hover:bg-orange-200"
+              >
+                Applica
+              </Button>
+            </div>
           </div>
 
           <Alert className="border-blue-200 bg-blue-50">
             <Info className="h-4 w-4 text-blue-600" />
             <AlertDescription className="text-blue-800 text-xs">
-              <strong>Nota:</strong> Se ricevi errori di "email già registrata", significa che l'account esiste già sul server. 
-              Usa la tab "Accedi\" con la password corretta, oppure registra un nuovo account con un'email diversa.
+              <strong>Nota:</strong> Modifica la configurazione e clicca "Applica" per connetterti al server. 
+              Se ricevi errori di "email già registrata", significa che l'account esiste già sul server.
             </AlertDescription>
           </Alert>
         </div>
@@ -364,7 +381,7 @@ export const LoginPage = () => {
         <span>
           {mode === 'local' 
             ? `Database creato: ${getDatabaseCreationDate()}`
-            : `Server: ${remoteConfig.host}:${remoteConfig.port}`
+            : `Server: ${localRemoteConfig.host}:${localRemoteConfig.port}`
           }
         </span>
       </div>
