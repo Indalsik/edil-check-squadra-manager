@@ -6,6 +6,8 @@ import { DashboardOverview } from "@/components/DashboardOverview"
 import { WorkersManagement } from "@/components/WorkersManagement"
 import { TimeTracking } from "@/components/TimeTracking"
 import { PaymentsManagement } from "@/components/PaymentsManagement"
+import { SitesManagement } from "@/components/SitesManagement"
+import { ArchiveManagement } from "@/components/ArchiveManagement"
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard")
@@ -28,19 +30,9 @@ const Index = () => {
           </div>
         )
       case "sites":
-        return (
-          <div className="p-6">
-            <h2 className="text-2xl font-bold mb-4">Gestione Cantieri</h2>
-            <p className="text-muted-foreground">Sezione in sviluppo...</p>
-          </div>
-        )
+        return <SitesManagement />
       case "archive":
-        return (
-          <div className="p-6">
-            <h2 className="text-2xl font-bold mb-4">Archivio</h2>
-            <p className="text-muted-foreground">Sezione in sviluppo...</p>
-          </div>
-        )
+        return <ArchiveManagement />
       case "settings":
         return (
           <div className="p-6">

@@ -59,6 +59,16 @@ export function PaymentsManagement() {
 
   const totalPending = pendingPayments.reduce((sum, payment) => sum + payment.totalAmount, 0)
 
+  const handlePayNow = (paymentId: number, workerName: string, amount: number) => {
+    console.log(`Elaborando pagamento di €${amount} per ${workerName}`)
+    // TODO: Implementare dialogo per confermare pagamento
+  }
+
+  const handleRegisterPayment = () => {
+    console.log("Registrando nuovo pagamento...")
+    // TODO: Implementare dialogo per registrare pagamento manuale
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -69,7 +79,7 @@ export function PaymentsManagement() {
           </h2>
           <p className="text-muted-foreground">Monitora e gestisci i pagamenti degli operai</p>
         </div>
-        <Button className="bg-edil-orange hover:bg-edil-orange/90">
+        <Button onClick={handleRegisterPayment} className="bg-edil-orange hover:bg-edil-orange/90">
           <Plus className="h-4 w-4 mr-2" />
           Registra Pagamento
         </Button>
@@ -131,7 +141,11 @@ export function PaymentsManagement() {
                     <p className="text-sm text-muted-foreground">Totale</p>
                     <p className="font-bold text-lg text-edil-orange">€{payment.totalAmount}</p>
                   </div>
-                  <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                  <Button 
+                    size="sm" 
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={() => handlePayNow(payment.id, payment.worker, payment.totalAmount)}
+                  >
                     Paga Ora
                   </Button>
                 </div>

@@ -21,7 +21,7 @@ export function WorkersManagement() {
     {
       id: 2,
       name: "Luca Bianchi",
-      role: "Muratore",
+      role: "Muratore", 
       phone: "+39 333 7654321",
       email: "luca.bianchi@edilcheck.it",
       status: "Attivo",
@@ -42,7 +42,7 @@ export function WorkersManagement() {
     },
     {
       id: 4,
-      name: "Francesco Neri",
+      name: "Francesco Neri", 
       role: "Idraulico",
       phone: "+39 333 5432109",
       email: "francesco.neri@edilcheck.it",
@@ -64,6 +64,21 @@ export function WorkersManagement() {
     }
   }
 
+  const handleAddWorker = () => {
+    console.log("Aggiungendo nuovo operaio...")
+    // TODO: Implementare dialogo per aggiungere operaio
+  }
+
+  const handleEditWorker = (workerId: number) => {
+    console.log("Modificando operaio:", workerId)
+    // TODO: Implementare dialogo per modificare operaio
+  }
+
+  const handleDeleteWorker = (workerId: number) => {
+    console.log("Eliminando operaio:", workerId)
+    // TODO: Implementare conferma ed eliminazione operaio
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -74,7 +89,7 @@ export function WorkersManagement() {
           </h2>
           <p className="text-muted-foreground">Gestisci la tua squadra di operai edili</p>
         </div>
-        <Button className="bg-edil-orange hover:bg-edil-orange/90">
+        <Button onClick={handleAddWorker} className="bg-edil-orange hover:bg-edil-orange/90">
           <Plus className="h-4 w-4 mr-2" />
           Nuovo Operaio
         </Button>
@@ -126,11 +141,21 @@ export function WorkersManagement() {
               </div>
               
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" size="sm" className="flex-1">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => handleEditWorker(worker.id)}
+                >
                   <Edit className="h-4 w-4 mr-1" />
                   Modifica
                 </Button>
-                <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-red-600 hover:text-red-700"
+                  onClick={() => handleDeleteWorker(worker.id)}
+                >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
