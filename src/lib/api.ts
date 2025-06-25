@@ -1,11 +1,13 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:3001/api';
+// Use relative URL for API calls (will be proxied by Vite)
+const API_BASE_URL = '/api';
 
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
+  timeout: 10000,
 });
 
 // Add auth token to requests
@@ -21,6 +23,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    console.error('API Error:', error.response?.data || error.message);
     if (error.response?.status === 401) {
       localStorage.removeItem('edilcheck_token');
       localStorage.removeItem('edilcheck_user');
