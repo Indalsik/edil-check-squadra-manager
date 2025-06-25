@@ -36,7 +36,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (mode === 'local') {
         const savedUser = localStorage.getItem('edilcheck_user')
         if (savedUser) {
-          setUser(JSON.parse(savedUser))
+          try {
+            setUser(JSON.parse(savedUser))
+          } catch (error) {
+            console.error('Error parsing saved user:', error)
+            localStorage.removeItem('edilcheck_user')
+          }
         }
       } else {
         const token = localStorage.getItem('edilcheck_token')
@@ -60,6 +65,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (email: string, password: string) => {
     try {
+      console.log(`🔐 Login attempt for ${email} using ${mode} mode`)
+      
       if (mode === 'local') {
         // Local authentication
         const users = JSON.parse(localStorage.getItem('edilcheck_users') || '[]')
@@ -69,8 +76,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const userInfo = { id: user.id, email: user.email }
           localStorage.setItem('edilcheck_user', JSON.stringify(userInfo))
           setUser(userInfo)
+          console.log('✅ Local login successful')
           return { success: true }
         } else {
+          console.log('❌ Local login failed: invalid credentials')
           return { success: false, error: 'Credenziali non valide' }
         }
       } else {
@@ -79,9 +88,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const response = await authAPI.login(email, password)
           localStorage.setItem('edilcheck_token', response.token)
           setUser(response.user)
+          console.log('✅ Remote login successful')
           return { success: true }
         } catch (error: any) {
-          console.error('Remote login error:', error)
+          console.error('❌ Remote login error:', error)
           return { 
             success: false, 
             error: error.message || 'Errore durante il login' 
@@ -89,7 +99,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     } catch (error: any) {
-      console.error('Login error:', error)
+      console.error('❌ Login error:', error)
       return { 
         success: false, 
         error: error.message || 'Errore durante il login' 
@@ -99,12 +109,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const register = async (email: string, password: string) => {
     try {
+      console.log(`📝 Registration attempt for ${email} using ${mode} mode`)
+      
       if (mode === 'local') {
         // Local registration
         const users = JSON.parse(localStorage.getItem('edilcheck_users') || '[]')
         
+        // Check if user already exists
         if (users.find((u: any) => u.email === email)) {
-          return { success: false, error: 'Email già registrata' }
+          console.log('❌ Local registration failed: email already exists')
+          return { success: false, error: 'Email già registrata nel database locale' }
         }
         
         const newUser = {
@@ -119,6 +133,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         localStorage.setItem('edilcheck_user', JSON.stringify(userInfo))
         setUser(userInfo)
         
+        console.log('✅ Local registration successful')
         return { success: true }
       } else {
         // Remote registration
@@ -126,17 +141,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const response = await authAPI.register(email, password)
           localStorage.setItem('edilcheck_token', response.token)
           setUser(response.user)
+          console.log('✅ Remote registration successful')
           return { success: true }
         } catch (error: any) {
-          console.error('Remote registration error:', error)
+          console.error('❌ Remote registration error:', error)
+          
+          // Provide more specific error messages
+          let errorMessage = error.message || 'Errore durante la registrazione'
+          
+          if (errorMessage.includes('già registrata') || errorMessage.includes('already registered')) {
+            errorMessage = `Email già registrata sul server remoto. Prova ad accedere o usa un'email diversa.`
+          } else if (errorMessage.includes('connettersi al server') || errorMessage.includes('Failed to fetch')) {
+            errorMessage = `Impossibile connettersi al server remoto. Verifica che il server sia in esecuzione o passa al database locale.`
+          }
+          
           return { 
             success: false, 
-            error: error.message || 'Errore durante la registrazione' 
+            error: errorMessage
           }
         }
       }
     } catch (error: any) {
-      console.error('Registration error:', error)
+      console.error('❌ Registration error:', error)
       return { 
         success: false, 
         error: error.message || 'Errore durante la registrazione' 
@@ -145,6 +171,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const logout = async () => {
+    console.log(`👋 Logout using ${mode} mode`)
+    
     if (mode === 'local') {
       localStorage.removeItem('edilcheck_user')
     } else {
@@ -156,6 +184,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       localStorage.removeItem('edilcheck_token')
     }
     setUser(null)
+    console.log('✅ Logout successful')
   }
 
   return (

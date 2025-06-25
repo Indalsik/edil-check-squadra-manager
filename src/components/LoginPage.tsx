@@ -20,7 +20,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDatabase } from '@/contexts/DatabaseContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { Building2, Moon, Sun, Database, Server, Trash2, Calendar, Settings, AlertCircle, Info } from 'lucide-react'
+import { Building2, Moon, Sun, Database, Server, Trash2, Calendar, Settings, AlertCircle, Info, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 export const LoginPage = () => {
@@ -140,11 +140,21 @@ export const LoginPage = () => {
 
   const handleDeleteDatabase = () => {
     if (mode === 'local') {
+      // Clear all local storage data
       localStorage.removeItem('edilcheck_data')
       localStorage.removeItem('edilcheck_users')
       localStorage.removeItem('edilcheck_user')
       localStorage.removeItem('edilcheck_token')
+      
+      // Clear any form errors
+      setLastError(null)
+      
+      // Reset forms
+      setLoginData({ email: '', password: '' })
+      setRegisterData({ email: '', password: '', confirmPassword: '' })
+      
       toast.success('Database locale cancellato con successo')
+      console.log('🗑️ Local database cleared completely')
     } else {
       toast.error('Impossibile cancellare il database remoto da qui')
     }
@@ -154,6 +164,11 @@ export const LoginPage = () => {
     console.log(`🔄 Switching database mode: ${mode} → ${newMode}`)
     setMode(newMode)
     setLastError(null) // Clear errors when switching modes
+    
+    // Clear forms when switching modes
+    setLoginData({ email: '', password: '' })
+    setRegisterData({ email: '', password: '', confirmPassword: '' })
+    
     if (newMode === 'remote') {
       // Applica la configurazione remota
       setDatabaseRemoteConfig(remoteConfig.host, remoteConfig.port)
@@ -200,9 +215,21 @@ export const LoginPage = () => {
           <div className="space-y-2">
             <p className="font-medium">{lastError.message}</p>
             {isEmailAlreadyExists && (
-              <p className="text-sm">
-                Questa email è già registrata. Prova ad accedere con la tab "Accedi" usando la password corretta.
-              </p>
+              <div className="space-y-1">
+                <p className="text-sm">
+                  Questa email è già registrata {mode === 'remote' ? 'sul server remoto' : 'nel database locale'}. 
+                </p>
+                <p className="text-sm">
+                  Prova ad accedere con la tab "Accedi" usando la password corretta, 
+                  oppure registra un nuovo account con un'email diversa.
+                </p>
+                {mode === 'remote' && (
+                  <p className="text-sm font-medium">
+                    💡 Suggerimento: Se vuoi iniziare da zero, passa al "Database Locale" 
+                    e cancella i dati esistenti.
+                  </p>
+                )}
+              </div>
             )}
             {isInvalidCredentials && (
               <p className="text-sm">
@@ -218,6 +245,9 @@ export const LoginPage = () => {
                   <li>L'indirizzo {remoteConfig.host} sia corretto</li>
                   <li>Non ci siano firewall che bloccano la connessione</li>
                 </ul>
+                <p className="font-medium">
+                  💡 Suggerimento: Passa al "Database Locale" per usare il sistema offline.
+                </p>
               </div>
             )}
           </div>
@@ -298,7 +328,7 @@ export const LoginPage = () => {
             <Info className="h-4 w-4 text-blue-600" />
             <AlertDescription className="text-blue-800 text-xs">
               <strong>Nota:</strong> Se ricevi errori di "email già registrata", significa che l'account esiste già sul server. 
-              Usa la tab "Accedi\" con la password corretta, oppure registra un nuovo account con un'email diversa.
+              Usa la tab "Accedi" con la password corretta, oppure registra un nuovo account con un'email diversa.
             </AlertDescription>
           </Alert>
         </div>
@@ -307,9 +337,24 @@ export const LoginPage = () => {
       {/* Local Configuration */}
       {mode === 'local' && (
         <div className="space-y-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-          <p className="text-xs text-blue-600">
-            I dati saranno salvati nel browser locale
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-blue-600">
+              I dati saranno salvati nel browser locale
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setLastError(null)
+                setLoginData({ email: '', password: '' })
+                setRegisterData({ email: '', password: '', confirmPassword: '' })
+              }}
+              className="text-xs h-7"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Reset Errori
+            </Button>
+          </div>
         </div>
       )}
       
@@ -343,7 +388,7 @@ export const LoginPage = () => {
               <AlertDialogDescription>
                 Sei sicuro di voler cancellare tutti i dati del database locale? 
                 Questa azione eliminerà definitivamente tutti gli operai, cantieri, 
-                ore di lavoro e pagamenti salvati. L'azione non può essere annullata.
+                ore di lavoro, pagamenti e utenti registrati. L'azione non può essere annullata.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
