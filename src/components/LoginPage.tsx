@@ -19,15 +19,19 @@ import {
 import { useAuth } from '@/contexts/AuthContext'
 import { useDatabase } from '@/contexts/DatabaseContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { Building2, Moon, Sun, Database, Server, Trash2, Calendar } from 'lucide-react'
+import { Building2, Moon, Sun, Database, Server, Trash2, Calendar, Settings } from 'lucide-react'
 import { toast } from 'sonner'
 
 export const LoginPage = () => {
   const [loginData, setLoginData] = useState({ email: '', password: '' })
   const [registerData, setRegisterData] = useState({ email: '', password: '', confirmPassword: '' })
   const [isLoading, setIsLoading] = useState(false)
+  const [remoteConfig, setRemoteConfig] = useState({
+    host: 'localhost',
+    port: '3002'
+  })
   const { login, register } = useAuth()
-  const { mode, setMode } = useDatabase()
+  const { mode, setMode, setRemoteConfig: setDatabaseRemoteConfig } = useDatabase()
   const { theme, toggleTheme } = useTheme()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -83,7 +87,6 @@ export const LoginPage = () => {
       if (data) {
         try {
           const parsedData = JSON.parse(data)
-          // Se non c'è una data di creazione salvata, usiamo la data del primo worker
           if (parsedData.workers && parsedData.workers.length > 0) {
             const firstWorker = parsedData.workers[0]
             if (firstWorker.created_at) {
@@ -96,14 +99,12 @@ export const LoginPage = () => {
       }
       return 'Non disponibile'
     } else {
-      // Per il database remoto, potremmo fare una chiamata API per ottenere questa info
-      return 'Connesso al server'
+      return 'Server remoto'
     }
   }
 
   const handleDeleteDatabase = () => {
     if (mode === 'local') {
-      // Cancella tutti i dati locali
       localStorage.removeItem('edilcheck_data')
       localStorage.removeItem('edilcheck_users')
       localStorage.removeItem('edilcheck_user')
@@ -114,10 +115,28 @@ export const LoginPage = () => {
     }
   }
 
+  const handleModeChange = (newMode: 'local' | 'remote') => {
+    setMode(newMode)
+    if (newMode === 'remote') {
+      // Applica la configurazione remota
+      setDatabaseRemoteConfig(remoteConfig.host, remoteConfig.port)
+    }
+  }
+
+  const handleRemoteConfigChange = (field: 'host' | 'port', value: string) => {
+    const newConfig = { ...remoteConfig, [field]: value }
+    setRemoteConfig(newConfig)
+    if (mode === 'remote') {
+      setDatabaseRemoteConfig(newConfig.host, newConfig.port)
+    }
+  }
+
   const DatabaseInfoSection = () => (
-    <div className="space-y-3 pt-4 border-t">
-      <Label className="text-sm font-medium">Modalità Database</Label>
-      <Select value={mode} onValueChange={(value: 'local' | 'remote') => setMode(value)}>
+    <div className="space-y-4 pt-4 border-t">
+      <Label className="text-sm font-medium">Configurazione Database</Label>
+      
+      {/* Database Mode Selection */}
+      <Select value={mode} onValueChange={handleModeChange}>
         <SelectTrigger className="w-full">
           <SelectValue />
         </SelectTrigger>
@@ -136,12 +155,50 @@ export const LoginPage = () => {
           </SelectItem>
         </SelectContent>
       </Select>
-      <p className="text-xs text-muted-foreground">
-        {mode === 'local' 
-          ? 'I dati saranno salvati nel browser locale' 
-          : 'I dati saranno salvati sul server remoto'
-        }
-      </p>
+
+      {/* Remote Configuration */}
+      {mode === 'remote' && (
+        <div className="space-y-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+          <div className="flex items-center gap-2 text-orange-800">
+            <Settings className="h-4 w-4" />
+            <span className="text-sm font-medium">Configurazione Server</span>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Label className="text-xs text-orange-700">Host/IP</Label>
+              <Input
+                value={remoteConfig.host}
+                onChange={(e) => handleRemoteConfigChange('host', e.target.value)}
+                placeholder="localhost"
+                className="text-sm h-8"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-orange-700">Porta</Label>
+              <Input
+                value={remoteConfig.port}
+                onChange={(e) => handleRemoteConfigChange('port', e.target.value)}
+                placeholder="3002"
+                className="text-sm h-8"
+              />
+            </div>
+          </div>
+          
+          <p className="text-xs text-orange-600">
+            Server: http://{remoteConfig.host}:{remoteConfig.port}
+          </p>
+        </div>
+      )}
+
+      {/* Local Configuration */}
+      {mode === 'local' && (
+        <div className="space-y-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+          <p className="text-xs text-blue-600">
+            I dati saranno salvati nel browser locale
+          </p>
+        </div>
+      )}
       
       {/* Database Creation Date */}
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -149,7 +206,7 @@ export const LoginPage = () => {
         <span>
           {mode === 'local' 
             ? `Database creato: ${getDatabaseCreationDate()}`
-            : 'Connesso al server remoto'
+            : `Server: ${remoteConfig.host}:${remoteConfig.port}`
           }
         </span>
       </div>

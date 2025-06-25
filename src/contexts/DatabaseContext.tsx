@@ -7,6 +7,7 @@ type DatabaseMode = 'local' | 'remote'
 interface DatabaseContextType {
   mode: DatabaseMode
   setMode: (mode: DatabaseMode) => void
+  setRemoteConfig: (host: string, port: string) => void
   isConnected: boolean
   connectionError: string | null
   database: any
@@ -23,15 +24,14 @@ export const useDatabase = () => {
 }
 
 // Remote database adapter
-const remoteDatabase = {
+const createRemoteDatabase = (host: string, port: string) => ({
   async init() {
-    // Test connection to remote server
     try {
-      const response = await fetch('/api/health')
+      const response = await fetch(`http://${host}:${port}/health`)
       if (!response.ok) throw new Error('Server not available')
       return true
     } catch (error) {
-      throw new Error('Cannot connect to remote server')
+      throw new Error(`Cannot connect to remote server at ${host}:${port}`)
     }
   },
 
@@ -70,12 +70,16 @@ const remoteDatabase = {
   removeWorkerFromSite: (siteId: number, workerId: number) => {
     console.log('Remove worker from site:', { siteId, workerId })
   }
-}
+})
 
 export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   const [mode, setMode] = useState<DatabaseMode>(() => {
     const saved = localStorage.getItem('edilcheck_database_mode')
     return (saved as DatabaseMode) || 'local'
+  })
+  const [remoteConfig, setRemoteConfigState] = useState(() => {
+    const saved = localStorage.getItem('edilcheck_remote_config')
+    return saved ? JSON.parse(saved) : { host: 'localhost', port: '3002' }
   })
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
@@ -83,8 +87,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     localStorage.setItem('edilcheck_database_mode', mode)
+    localStorage.setItem('edilcheck_remote_config', JSON.stringify(remoteConfig))
     initializeDatabase()
-  }, [mode])
+  }, [mode, remoteConfig])
 
   const initializeDatabase = async () => {
     setConnectionError(null)
@@ -96,8 +101,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
         setDatabase(localDatabase)
         setIsConnected(true)
       } else {
-        await remoteDatabase.init()
-        setDatabase(remoteDatabase)
+        const remoteDb = createRemoteDatabase(remoteConfig.host, remoteConfig.port)
+        await remoteDb.init()
+        setDatabase(remoteDb)
         setIsConnected(true)
       }
     } catch (error: any) {
@@ -121,10 +127,15 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     setMode(newMode)
   }
 
+  const setRemoteConfig = (host: string, port: string) => {
+    setRemoteConfigState({ host, port })
+  }
+
   return (
     <DatabaseContext.Provider value={{
       mode,
       setMode: handleSetMode,
+      setRemoteConfig,
       isConnected,
       connectionError,
       database
