@@ -14,13 +14,64 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 const JWT_SECRET = process.env.JWT_SECRET || 'edil-check-database-secret-key';
 
-// CORS configuration - allow all origins for database server
+// CORS configuration - MIGLIORATA per essere più permissiva
 app.use(cors({
-  origin: true,
+  origin: function (origin, callback) {
+    // Permetti richieste senza origin (es. app mobile, Postman)
+    if (!origin) return callback(null, true);
+    
+    // Lista di origini permesse
+    const allowedOrigins = [
+      'http://localhost:8080',
+      'http://127.0.0.1:8080',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      // Permetti tutti i domini webcontainer
+      /^https:\/\/.*\.webcontainer-api\.io$/,
+      /^https:\/\/.*\.local-credentialless\.webcontainer-api\.io$/,
+      /^https:\/\/.*\.stackblitz\.io$/,
+      /^https:\/\/.*\.bolt\.new$/
+    ];
+    
+    // Controlla se l'origin è permesso
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (typeof allowedOrigin === 'string') {
+        return origin === allowedOrigin;
+      } else {
+        return allowedOrigin.test(origin);
+      }
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.log('🚫 CORS blocked origin:', origin);
+      callback(null, true); // Per sviluppo, permetti comunque
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Access-Control-Request-Method',
+    'Access-Control-Request-Headers'
+  ],
+  exposedHeaders: ['Authorization'],
+  maxAge: 86400 // 24 ore
 }));
+
+// Middleware per gestire preflight requests
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.sendStatus(200);
+});
 
 app.use(express.json());
 
@@ -173,7 +224,8 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     service: 'Edil-Check Database Server',
-    timestamp: new Date().toISOString() 
+    timestamp: new Date().toISOString(),
+    cors: 'enabled'
   });
 });
 
@@ -573,6 +625,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Edil-Check Database Server running on http://localhost:${PORT}`);
   console.log(`📊 Database file: ${dbPath}`);
   console.log(`🔑 JWT Secret: ${JWT_SECRET.substring(0, 10)}...`);
+  console.log(`🌐 CORS enabled for all origins (development mode)`);
 });
 
 server.on('error', (error) => {
