@@ -4,9 +4,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuth } from '@/contexts/AuthContext'
+import { useDatabase } from '@/contexts/DatabaseContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { Building2, Moon, Sun } from 'lucide-react'
+import { Building2, Moon, Sun, Database, Server } from 'lucide-react'
 import { toast } from 'sonner'
 
 export const LoginPage = () => {
@@ -14,6 +16,7 @@ export const LoginPage = () => {
   const [registerData, setRegisterData] = useState({ email: '', password: '', confirmPassword: '' })
   const [isLoading, setIsLoading] = useState(false)
   const { login, register } = useAuth()
+  const { mode, setMode } = useDatabase()
   const { theme, toggleTheme } = useTheme()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -121,6 +124,36 @@ export const LoginPage = () => {
                   {isLoading ? 'Accesso in corso...' : 'Accedi'}
                 </Button>
               </form>
+              
+              {/* Database Selection */}
+              <div className="space-y-3 pt-4 border-t">
+                <Label className="text-sm font-medium">Modalità Database</Label>
+                <Select value={mode} onValueChange={(value: 'local' | 'remote') => setMode(value)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="local">
+                      <div className="flex items-center gap-2">
+                        <Database className="h-4 w-4 text-blue-600" />
+                        <span>Database Locale</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="remote">
+                      <div className="flex items-center gap-2">
+                        <Server className="h-4 w-4 text-orange-600" />
+                        <span>Database Remoto</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {mode === 'local' 
+                    ? 'I dati saranno salvati nel browser locale' 
+                    : 'I dati saranno salvati sul server remoto'
+                  }
+                </p>
+              </div>
             </TabsContent>
             
             <TabsContent value="register" className="space-y-4">
@@ -159,6 +192,36 @@ export const LoginPage = () => {
                   {isLoading ? 'Registrazione in corso...' : 'Registrati'}
                 </Button>
               </form>
+              
+              {/* Database Selection for Register tab too */}
+              <div className="space-y-3 pt-4 border-t">
+                <Label className="text-sm font-medium">Modalità Database</Label>
+                <Select value={mode} onValueChange={(value: 'local' | 'remote') => setMode(value)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="local">
+                      <div className="flex items-center gap-2">
+                        <Database className="h-4 w-4 text-blue-600" />
+                        <span>Database Locale</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="remote">
+                      <div className="flex items-center gap-2">
+                        <Server className="h-4 w-4 text-orange-600" />
+                        <span>Database Remoto</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {mode === 'local' 
+                    ? 'I dati saranno salvati nel browser locale' 
+                    : 'I dati saranno salvati sul server remoto'
+                  }
+                </p>
+              </div>
             </TabsContent>
           </Tabs>
         </CardContent>
