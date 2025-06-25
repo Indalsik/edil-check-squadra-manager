@@ -1,445 +1,297 @@
-import initSqlJs from 'sql.js';
-
-export interface Worker {
-  id?: number;
-  name: string;
-  role: string;
-  phone: string;
-  email: string;
-  status: string;
-  hourlyRate: number;
-  createdAt?: string;
-}
-
-export interface Site {
-  id?: number;
-  name: string;
-  owner: string;
-  address: string;
-  status: string;
-  startDate: string;
-  estimatedEnd: string;
-  createdAt?: string;
-}
-
-export interface TimeEntry {
-  id?: number;
-  workerId: number;
-  siteId: number;
-  date: string;
-  startTime: string;
-  endTime: string;
-  totalHours: number;
-  status: string;
-  createdAt?: string;
-}
-
-export interface Payment {
-  id?: number;
-  workerId: number;
-  week: string;
-  hours: number;
-  hourlyRate: number;
-  totalAmount: number;
-  overtime: number;
-  status: string;
-  paidDate?: string;
-  method?: string;
-  createdAt?: string;
-}
-
-export interface SiteWorker {
-  id?: number;
-  siteId: number;
-  workerId: number;
-  assignedAt?: string;
-}
+import { supabase } from './supabase'
+import type { Worker, Site, TimeEntry, Payment } from './supabase'
 
 class Database {
-  private db: any = null;
-  private SQL: any = null;
-  private currentUser: string = '';
+  private userId: string | null = null
 
   async init() {
-    if (this.db) return;
-
-    this.SQL = await initSqlJs({
-      locateFile: (file: string) => `https://sql.js.org/dist/${file}`
-    });
-
-    // Get current user's database key
-    const dbKey = localStorage.getItem('edilcheck_current_db_key') || 'edilcheck_db_default';
-    this.currentUser = dbKey;
-
-    // Try to load existing database from localStorage
-    const savedDb = localStorage.getItem(dbKey);
-    if (savedDb) {
-      const uint8Array = new Uint8Array(JSON.parse(savedDb));
-      this.db = new this.SQL.Database(uint8Array);
-    } else {
-      this.db = new this.SQL.Database();
-      this.createTables();
-      this.insertSampleData();
+    const { data: { user } } = await supabase.auth.getUser()
+    this.userId = user?.id || null
+    
+    if (!this.userId) {
+      throw new Error('User not authenticated')
     }
   }
 
-  private createTables() {
-    // Workers table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS workers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        role TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        email TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'Attivo',
-        hourlyRate REAL NOT NULL,
-        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Sites table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS sites (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        owner TEXT NOT NULL,
-        address TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'Attivo',
-        startDate DATE NOT NULL,
-        estimatedEnd DATE NOT NULL,
-        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Time entries table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS time_entries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        workerId INTEGER NOT NULL,
-        siteId INTEGER NOT NULL,
-        date DATE NOT NULL,
-        startTime TIME NOT NULL,
-        endTime TIME NOT NULL,
-        totalHours REAL NOT NULL,
-        status TEXT NOT NULL DEFAULT 'Confermato',
-        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (workerId) REFERENCES workers(id),
-        FOREIGN KEY (siteId) REFERENCES sites(id)
-      )
-    `);
-
-    // Payments table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS payments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        workerId INTEGER NOT NULL,
-        week TEXT NOT NULL,
-        hours REAL NOT NULL,
-        hourlyRate REAL NOT NULL,
-        totalAmount REAL NOT NULL,
-        overtime REAL DEFAULT 0,
-        status TEXT NOT NULL DEFAULT 'Da Pagare',
-        paidDate DATE,
-        method TEXT,
-        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (workerId) REFERENCES workers(id)
-      )
-    `);
-
-    // Site workers junction table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS site_workers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        siteId INTEGER NOT NULL,
-        workerId INTEGER NOT NULL,
-        assignedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (siteId) REFERENCES sites(id),
-        FOREIGN KEY (workerId) REFERENCES workers(id),
-        UNIQUE(siteId, workerId)
-      )
-    `);
-  }
-
-  private insertSampleData() {
-    // Sample workers
-    const workers = [
-      { name: 'Marco Rossi', role: 'Capocantiere', phone: '+39 333 1234567', email: 'marco.rossi@edilcheck.it', status: 'Attivo', hourlyRate: 18 },
-      { name: 'Luca Bianchi', role: 'Muratore', phone: '+39 333 7654321', email: 'luca.bianchi@edilcheck.it', status: 'Attivo', hourlyRate: 15 },
-      { name: 'Antonio Verde', role: 'Elettricista', phone: '+39 333 9876543', email: 'antonio.verde@edilcheck.it', status: 'In Permesso', hourlyRate: 20 },
-      { name: 'Francesco Neri', role: 'Idraulico', phone: '+39 333 5432109', email: 'francesco.neri@edilcheck.it', status: 'Attivo', hourlyRate: 19 }
-    ];
-
-    workers.forEach(worker => {
-      this.db.run(
-        'INSERT INTO workers (name, role, phone, email, status, hourlyRate) VALUES (?, ?, ?, ?, ?, ?)',
-        [worker.name, worker.role, worker.phone, worker.email, worker.status, worker.hourlyRate]
-      );
-    });
-
-    // Sample sites
-    const sites = [
-      { name: 'Ristrutturazione Villa Roma', owner: 'Mario Bianchi', address: 'Via Roma 123, Milano', status: 'Attivo', startDate: '2024-01-15', estimatedEnd: '2024-03-30' },
-      { name: 'Nuova Costruzione Garibaldi', owner: 'Edil Costruzioni SRL', address: 'Piazza Garibaldi 45, Milano', status: 'Attivo', startDate: '2024-02-01', estimatedEnd: '2024-06-15' },
-      { name: 'Ristrutturazione Uffici', owner: 'Tech Company Ltd', address: 'Via Montenapoleone 88, Milano', status: 'In Pausa', startDate: '2024-01-20', estimatedEnd: '2024-04-10' }
-    ];
-
-    sites.forEach(site => {
-      this.db.run(
-        'INSERT INTO sites (name, owner, address, status, startDate, estimatedEnd) VALUES (?, ?, ?, ?, ?, ?)',
-        [site.name, site.owner, site.address, site.status, site.startDate, site.estimatedEnd]
-      );
-    });
-
-    // Sample site assignments
-    const assignments = [
-      { siteId: 1, workerId: 1 }, { siteId: 1, workerId: 2 }, { siteId: 1, workerId: 3 },
-      { siteId: 2, workerId: 4 }, { siteId: 2, workerId: 1 },
-      { siteId: 3, workerId: 3 }
-    ];
-
-    assignments.forEach(assignment => {
-      this.db.run(
-        'INSERT INTO site_workers (siteId, workerId) VALUES (?, ?)',
-        [assignment.siteId, assignment.workerId]
-      );
-    });
-
-    // Sample time entries
-    const timeEntries = [
-      { workerId: 1, siteId: 1, date: '2024-01-15', startTime: '08:00', endTime: '17:00', totalHours: 8, status: 'Confermato' },
-      { workerId: 2, siteId: 1, date: '2024-01-15', startTime: '07:30', endTime: '16:30', totalHours: 8, status: 'Confermato' },
-      { workerId: 3, siteId: 3, date: '2024-01-15', startTime: '09:00', endTime: '13:00', totalHours: 4, status: 'In Attesa' },
-      { workerId: 4, siteId: 2, date: '2024-01-15', startTime: '08:30', endTime: '17:30', totalHours: 8, status: 'Confermato' }
-    ];
-
-    timeEntries.forEach(entry => {
-      this.db.run(
-        'INSERT INTO time_entries (workerId, siteId, date, startTime, endTime, totalHours, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [entry.workerId, entry.siteId, entry.date, entry.startTime, entry.endTime, entry.totalHours, entry.status]
-      );
-    });
-
-    // Sample payments
-    const payments = [
-      { workerId: 1, week: 'Settimana 02/2024', hours: 40, hourlyRate: 18, totalAmount: 720, overtime: 0, status: 'Da Pagare' },
-      { workerId: 2, week: 'Settimana 02/2024', hours: 38, hourlyRate: 15, totalAmount: 570, overtime: 2, status: 'Da Pagare' },
-      { workerId: 4, week: 'Settimana 02/2024', hours: 42, hourlyRate: 19, totalAmount: 798, overtime: 4, status: 'Da Pagare' },
-      { workerId: 3, week: 'Settimana 01/2024', hours: 32, hourlyRate: 20, totalAmount: 800, overtime: 0, status: 'Pagato', paidDate: '2024-01-12', method: 'Bonifico' },
-      { workerId: 1, week: 'Settimana 01/2024', hours: 40, hourlyRate: 18, totalAmount: 720, overtime: 0, status: 'Pagato', paidDate: '2024-01-12', method: 'Contanti' }
-    ];
-
-    payments.forEach(payment => {
-      this.db.run(
-        'INSERT INTO payments (workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [payment.workerId, payment.week, payment.hours, payment.hourlyRate, payment.totalAmount, payment.overtime, payment.status, payment.paidDate, payment.method]
-      );
-    });
-
-    this.saveToLocalStorage();
-  }
-
-  private saveToLocalStorage() {
-    const data = this.db.export();
-    const dbKey = localStorage.getItem('edilcheck_current_db_key') || 'edilcheck_db_default';
-    localStorage.setItem(dbKey, JSON.stringify(Array.from(data)));
+  private ensureUserId() {
+    if (!this.userId) {
+      throw new Error('Database not initialized or user not authenticated')
+    }
+    return this.userId
   }
 
   // Workers CRUD
-  getWorkers(): Worker[] {
-    const stmt = this.db.prepare('SELECT * FROM workers ORDER BY name');
-    const workers = [];
-    while (stmt.step()) {
-      workers.push(stmt.getAsObject());
-    }
-    stmt.free();
-    return workers;
+  async getWorkers(): Promise<Worker[]> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('workers')
+      .select('*')
+      .eq('user_id', userId)
+      .order('name')
+
+    if (error) throw error
+    return data || []
   }
 
-  addWorker(worker: Omit<Worker, 'id'>): number {
-    const stmt = this.db.prepare(
-      'INSERT INTO workers (name, role, phone, email, status, hourlyRate) VALUES (?, ?, ?, ?, ?, ?)'
-    );
-    stmt.run([worker.name, worker.role, worker.phone, worker.email, worker.status, worker.hourlyRate]);
-    const id = this.db.exec('SELECT last_insert_rowid()')[0].values[0][0];
-    stmt.free();
-    this.saveToLocalStorage();
-    return id;
+  async addWorker(worker: Omit<Worker, 'id' | 'user_id' | 'created_at'>): Promise<Worker> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('workers')
+      .insert({ ...worker, user_id: userId })
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
   }
 
-  updateWorker(id: number, worker: Partial<Worker>): void {
-    const fields = Object.keys(worker).filter(key => key !== 'id');
-    const values = fields.map(key => worker[key as keyof Worker]);
-    const setClause = fields.map(field => `${field} = ?`).join(', ');
-    
-    this.db.run(`UPDATE workers SET ${setClause} WHERE id = ?`, [...values, id]);
-    this.saveToLocalStorage();
+  async updateWorker(id: string, worker: Partial<Worker>): Promise<Worker> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('workers')
+      .update(worker)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
   }
 
-  deleteWorker(id: number): void {
-    this.db.run('DELETE FROM workers WHERE id = ?', [id]);
-    this.saveToLocalStorage();
+  async deleteWorker(id: string): Promise<void> {
+    const userId = this.ensureUserId()
+    const { error } = await supabase
+      .from('workers')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId)
+
+    if (error) throw error
   }
 
   // Sites CRUD
-  getSites(): Site[] {
-    const stmt = this.db.prepare('SELECT * FROM sites ORDER BY name');
-    const sites = [];
-    while (stmt.step()) {
-      sites.push(stmt.getAsObject());
-    }
-    stmt.free();
-    return sites;
+  async getSites(): Promise<Site[]> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('sites')
+      .select('*')
+      .eq('user_id', userId)
+      .order('name')
+
+    if (error) throw error
+    return data || []
   }
 
-  addSite(site: Omit<Site, 'id'>): number {
-    const stmt = this.db.prepare(
-      'INSERT INTO sites (name, owner, address, status, startDate, estimatedEnd) VALUES (?, ?, ?, ?, ?, ?)'
-    );
-    stmt.run([site.name, site.owner, site.address, site.status, site.startDate, site.estimatedEnd]);
-    const id = this.db.exec('SELECT last_insert_rowid()')[0].values[0][0];
-    stmt.free();
-    this.saveToLocalStorage();
-    return id;
+  async addSite(site: Omit<Site, 'id' | 'user_id' | 'created_at'>): Promise<Site> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('sites')
+      .insert({ ...site, user_id: userId })
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
   }
 
-  updateSite(id: number, site: Partial<Site>): void {
-    const fields = Object.keys(site).filter(key => key !== 'id');
-    const values = fields.map(key => site[key as keyof Site]);
-    const setClause = fields.map(field => `${field} = ?`).join(', ');
-    
-    this.db.run(`UPDATE sites SET ${setClause} WHERE id = ?`, [...values, id]);
-    this.saveToLocalStorage();
+  async updateSite(id: string, site: Partial<Site>): Promise<Site> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('sites')
+      .update(site)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
   }
 
-  deleteSite(id: number): void {
-    this.db.run('DELETE FROM sites WHERE id = ?', [id]);
-    this.saveToLocalStorage();
-  }
+  async deleteSite(id: string): Promise<void> {
+    const userId = this.ensureUserId()
+    const { error } = await supabase
+      .from('sites')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId)
 
-  // Site Workers
-  getSiteWorkers(siteId: number): Worker[] {
-    const stmt = this.db.prepare(`
-      SELECT w.* FROM workers w 
-      JOIN site_workers sw ON w.id = sw.workerId 
-      WHERE sw.siteId = ?
-    `);
-    stmt.bind([siteId]);
-    const workers = [];
-    while (stmt.step()) {
-      workers.push(stmt.getAsObject());
-    }
-    stmt.free();
-    return workers;
-  }
-
-  assignWorkerToSite(siteId: number, workerId: number): void {
-    this.db.run('INSERT OR IGNORE INTO site_workers (siteId, workerId) VALUES (?, ?)', [siteId, workerId]);
-    this.saveToLocalStorage();
-  }
-
-  removeWorkerFromSite(siteId: number, workerId: number): void {
-    this.db.run('DELETE FROM site_workers WHERE siteId = ? AND workerId = ?', [siteId, workerId]);
-    this.saveToLocalStorage();
+    if (error) throw error
   }
 
   // Time Entries CRUD
-  getTimeEntries(): any[] {
-    const stmt = this.db.prepare(`
-      SELECT te.*, w.name as workerName, s.name as siteName 
-      FROM time_entries te
-      JOIN workers w ON te.workerId = w.id
-      JOIN sites s ON te.siteId = s.id
-      ORDER BY te.date DESC, te.startTime
-    `);
-    const entries = [];
-    while (stmt.step()) {
-      entries.push(stmt.getAsObject());
-    }
-    stmt.free();
-    return entries;
+  async getTimeEntries(): Promise<any[]> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('time_entries')
+      .select(`
+        *,
+        workers!inner(name),
+        sites!inner(name)
+      `)
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+
+    if (error) throw error
+    return data?.map(entry => ({
+      ...entry,
+      workerName: entry.workers.name,
+      siteName: entry.sites.name
+    })) || []
   }
 
-  addTimeEntry(entry: Omit<TimeEntry, 'id'>): number {
-    const stmt = this.db.prepare(
-      'INSERT INTO time_entries (workerId, siteId, date, startTime, endTime, totalHours, status) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    );
-    stmt.run([entry.workerId, entry.siteId, entry.date, entry.startTime, entry.endTime, entry.totalHours, entry.status]);
-    const id = this.db.exec('SELECT last_insert_rowid()')[0].values[0][0];
-    stmt.free();
-    this.saveToLocalStorage();
-    return id;
+  async addTimeEntry(entry: Omit<TimeEntry, 'id' | 'user_id' | 'created_at'>): Promise<TimeEntry> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('time_entries')
+      .insert({ ...entry, user_id: userId })
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
   }
 
-  updateTimeEntry(id: number, entry: Partial<TimeEntry>): void {
-    const fields = Object.keys(entry).filter(key => key !== 'id');
-    const values = fields.map(key => entry[key as keyof TimeEntry]);
-    const setClause = fields.map(field => `${field} = ?`).join(', ');
-    
-    this.db.run(`UPDATE time_entries SET ${setClause} WHERE id = ?`, [...values, id]);
-    this.saveToLocalStorage();
+  async updateTimeEntry(id: string, entry: Partial<TimeEntry>): Promise<TimeEntry> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('time_entries')
+      .update(entry)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
   }
 
-  deleteTimeEntry(id: number): void {
-    this.db.run('DELETE FROM time_entries WHERE id = ?', [id]);
-    this.saveToLocalStorage();
+  async deleteTimeEntry(id: string): Promise<void> {
+    const userId = this.ensureUserId()
+    const { error } = await supabase
+      .from('time_entries')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId)
+
+    if (error) throw error
   }
 
   // Payments CRUD
-  getPayments(): any[] {
-    const stmt = this.db.prepare(`
-      SELECT p.*, w.name as workerName 
-      FROM payments p
-      JOIN workers w ON p.workerId = w.id
-      ORDER BY p.createdAt DESC
-    `);
-    const payments = [];
-    while (stmt.step()) {
-      payments.push(stmt.getAsObject());
-    }
-    stmt.free();
-    return payments;
+  async getPayments(): Promise<any[]> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('payments')
+      .select(`
+        *,
+        workers!inner(name)
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return data?.map(payment => ({
+      ...payment,
+      workerName: payment.workers.name
+    })) || []
   }
 
-  addPayment(payment: Omit<Payment, 'id'>): number {
-    const stmt = this.db.prepare(
-      'INSERT INTO payments (workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-    );
-    stmt.run([payment.workerId, payment.week, payment.hours, payment.hourlyRate, payment.totalAmount, payment.overtime, payment.status, payment.paidDate, payment.method]);
-    const id = this.db.exec('SELECT last_insert_rowid()')[0].values[0][0];
-    stmt.free();
-    this.saveToLocalStorage();
-    return id;
+  async addPayment(payment: Omit<Payment, 'id' | 'user_id' | 'created_at'>): Promise<Payment> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('payments')
+      .insert({ ...payment, user_id: userId })
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
   }
 
-  updatePayment(id: number, payment: Partial<Payment>): void {
-    const fields = Object.keys(payment).filter(key => key !== 'id');
-    const values = fields.map(key => payment[key as keyof Payment]);
-    const setClause = fields.map(field => `${field} = ?`).join(', ');
-    
-    this.db.run(`UPDATE payments SET ${setClause} WHERE id = ?`, [...values, id]);
-    this.saveToLocalStorage();
+  async updatePayment(id: string, payment: Partial<Payment>): Promise<Payment> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('payments')
+      .update(payment)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
   }
 
-  deletePayment(id: number): void {
-    this.db.run('DELETE FROM payments WHERE id = ?', [id]);
-    this.saveToLocalStorage();
+  async deletePayment(id: string): Promise<void> {
+    const userId = this.ensureUserId()
+    const { error } = await supabase
+      .from('payments')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId)
+
+    if (error) throw error
   }
 
   // Dashboard stats
-  getDashboardStats() {
-    const activeWorkers = this.db.exec('SELECT COUNT(*) as count FROM workers WHERE status = "Attivo"')[0].values[0][0];
-    const activeSites = this.db.exec('SELECT COUNT(*) as count FROM sites WHERE status = "Attivo"')[0].values[0][0];
-    const pendingPayments = this.db.exec('SELECT COUNT(*) as count FROM payments WHERE status = "Da Pagare"')[0].values[0][0];
-    const todayHours = this.db.exec('SELECT COALESCE(SUM(totalHours), 0) as total FROM time_entries WHERE date = date("now")')[0].values[0][0];
+  async getDashboardStats() {
+    const userId = this.ensureUserId()
+    
+    const [workersResult, sitesResult, paymentsResult, timeEntriesResult] = await Promise.all([
+      supabase.from('workers').select('id').eq('user_id', userId).eq('status', 'Attivo'),
+      supabase.from('sites').select('id').eq('user_id', userId).eq('status', 'Attivo'),
+      supabase.from('payments').select('id').eq('user_id', userId).eq('status', 'Da Pagare'),
+      supabase.from('time_entries').select('total_hours').eq('user_id', userId).eq('date', new Date().toISOString().split('T')[0])
+    ])
+
+    const activeWorkers = workersResult.data?.length || 0
+    const activeSites = sitesResult.data?.length || 0
+    const pendingPayments = paymentsResult.data?.length || 0
+    const todayHours = timeEntriesResult.data?.reduce((sum, entry) => sum + entry.total_hours, 0) || 0
 
     return {
       activeWorkers,
       activeSites,
       pendingPayments,
       todayHours
-    };
+    }
+  }
+
+  // Site Workers
+  async getSiteWorkers(siteId: string): Promise<Worker[]> {
+    const userId = this.ensureUserId()
+    const { data, error } = await supabase
+      .from('site_workers')
+      .select(`
+        workers!inner(*)
+      `)
+      .eq('site_id', siteId)
+      .eq('workers.user_id', userId)
+
+    if (error) throw error
+    return data?.map(item => item.workers) || []
+  }
+
+  async assignWorkerToSite(siteId: string, workerId: string): Promise<void> {
+    const { error } = await supabase
+      .from('site_workers')
+      .insert({ site_id: siteId, worker_id: workerId })
+
+    if (error && error.code !== '23505') { // Ignore duplicate key error
+      throw error
+    }
+  }
+
+  async removeWorkerFromSite(siteId: string, workerId: string): Promise<void> {
+    const { error } = await supabase
+      .from('site_workers')
+      .delete()
+      .eq('site_id', siteId)
+      .eq('worker_id', workerId)
+
+    if (error) throw error
   }
 }
 
-export const database = new Database();
+export const database = new Database()

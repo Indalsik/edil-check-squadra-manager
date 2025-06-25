@@ -1,5 +1,4 @@
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
 import { AppSidebar } from "@/components/AppSidebar"
@@ -11,12 +10,40 @@ import { SitesManagement } from "@/components/SitesManagement"
 import { ArchiveManagement } from "@/components/ArchiveManagement"
 import { useAuth } from "@/contexts/AuthContext"
 import { useTheme } from "@/contexts/ThemeContext"
+import { database } from "@/lib/database"
 import { LogOut, Moon, Sun, User } from "lucide-react"
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard")
+  const [isInitialized, setIsInitialized] = useState(false)
   const { user, logout } = useAuth()
   const { theme, toggleTheme } = useTheme()
+
+  useEffect(() => {
+    const initDatabase = async () => {
+      if (user) {
+        try {
+          await database.init()
+          setIsInitialized(true)
+        } catch (error) {
+          console.error('Failed to initialize database:', error)
+        }
+      }
+    }
+
+    initDatabase()
+  }, [user])
+
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-edil-blue mx-auto"></div>
+          <p className="mt-4 text-lg">Inizializzazione database...</p>
+        </div>
+      </div>
+    )
+  }
 
   const renderContent = () => {
     switch (activeSection) {
@@ -62,7 +89,7 @@ const Index = () => {
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
                 <User className="h-4 w-4 text-edil-blue" />
-                <span className="text-sm font-medium">{user?.username}</span>
+                <span className="text-sm font-medium">{user?.email}</span>
               </div>
               
               <Button

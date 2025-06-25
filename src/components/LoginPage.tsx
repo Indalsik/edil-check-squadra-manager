@@ -1,4 +1,3 @@
-
 import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -11,8 +10,8 @@ import { Building2, Moon, Sun } from 'lucide-react'
 import { toast } from 'sonner'
 
 export const LoginPage = () => {
-  const [loginData, setLoginData] = useState({ username: '', password: '' })
-  const [registerData, setRegisterData] = useState({ username: '', password: '', confirmPassword: '' })
+  const [loginData, setLoginData] = useState({ email: '', password: '' })
+  const [registerData, setRegisterData] = useState({ email: '', password: '', confirmPassword: '' })
   const [isLoading, setIsLoading] = useState(false)
   const { login, register } = useAuth()
   const { theme, toggleTheme } = useTheme()
@@ -22,11 +21,11 @@ export const LoginPage = () => {
     setIsLoading(true)
     
     try {
-      const success = await login(loginData.username, loginData.password)
-      if (success) {
+      const result = await login(loginData.email, loginData.password)
+      if (result.success) {
         toast.success('Login effettuato con successo!')
       } else {
-        toast.error('Credenziali non valide')
+        toast.error(result.error || 'Credenziali non valide')
       }
     } catch (error) {
       toast.error('Errore durante il login')
@@ -51,11 +50,11 @@ export const LoginPage = () => {
     setIsLoading(true)
     
     try {
-      const success = await register(registerData.username, registerData.password)
-      if (success) {
-        toast.success('Registrazione completata con successo!')
+      const result = await register(registerData.email, registerData.password)
+      if (result.success) {
+        toast.success('Registrazione completata! Controlla la tua email per confermare l\'account.')
       } else {
-        toast.error('Username già esistente')
+        toast.error(result.error || 'Errore durante la registrazione')
       }
     } catch (error) {
       toast.error('Errore durante la registrazione')
@@ -99,12 +98,12 @@ export const LoginPage = () => {
             <TabsContent value="login" className="space-y-4">
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="login-username">Nome Utente</Label>
+                  <Label htmlFor="login-email">Email</Label>
                   <Input
-                    id="login-username"
-                    type="text"
-                    value={loginData.username}
-                    onChange={(e) => setLoginData({...loginData, username: e.target.value})}
+                    id="login-email"
+                    type="email"
+                    value={loginData.email}
+                    onChange={(e) => setLoginData({...loginData, email: e.target.value})}
                     required
                   />
                 </div>
@@ -127,12 +126,12 @@ export const LoginPage = () => {
             <TabsContent value="register" className="space-y-4">
               <form onSubmit={handleRegister} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="register-username">Nome Utente</Label>
+                  <Label htmlFor="register-email">Email</Label>
                   <Input
-                    id="register-username"
-                    type="text"
-                    value={registerData.username}
-                    onChange={(e) => setRegisterData({...registerData, username: e.target.value})}
+                    id="register-email"
+                    type="email"
+                    value={registerData.email}
+                    onChange={(e) => setRegisterData({...registerData, email: e.target.value})}
                     required
                   />
                 </div>

@@ -1,16 +1,12 @@
-
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-
-interface User {
-  username: string
-  createdAt: string
-}
+import { supabase } from '@/lib/supabase'
+import type { User } from '@supabase/supabase-js'
 
 interface AuthContextType {
   user: User | null
-  login: (username: string, password: string) => Promise<boolean>
-  register: (username: string, password: string) => Promise<boolean>
-  logout: () => void
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
+  register: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
+  logout: () => Promise<void>
   isLoading: boolean
 }
 
@@ -29,61 +25,59 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Check for existing session
-    const currentUser = localStorage.getItem('edilcheck_current_user')
-    if (currentUser) {
-      setUser(JSON.parse(currentUser))
-    }
-    setIsLoading(false)
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      setIsLoading(false)
+    })
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setUser(session?.user ?? null)
+        setIsLoading(false)
+      }
+    )
+
+    return () => subscription.unsubscribe()
   }, [])
 
-  const login = async (username: string, password: string): Promise<boolean> => {
-    // Get stored users
-    const users = JSON.parse(localStorage.getItem('edilcheck_users') || '{}')
-    
-    if (users[username] && users[username].password === password) {
-      const userData = { username, createdAt: users[username].createdAt }
-      setUser(userData)
-      localStorage.setItem('edilcheck_current_user', JSON.stringify(userData))
-      
-      // Set the database key for this user
-      localStorage.setItem('edilcheck_current_db_key', `edilcheck_db_${username}`)
-      
-      return true
+  const login = async (email: string, password: string) => {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: 'Errore durante il login' }
     }
-    return false
   }
 
-  const register = async (username: string, password: string): Promise<boolean> => {
-    // Get existing users
-    const users = JSON.parse(localStorage.getItem('edilcheck_users') || '{}')
-    
-    // Check if user already exists
-    if (users[username]) {
-      return false
-    }
+  const register = async (email: string, password: string) => {
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+      })
 
-    // Create new user
-    users[username] = {
-      password,
-      createdAt: new Date().toISOString()
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: 'Errore durante la registrazione' }
     }
-    
-    localStorage.setItem('edilcheck_users', JSON.stringify(users))
-    
-    // Auto-login after registration
-    const userData = { username, createdAt: users[username].createdAt }
-    setUser(userData)
-    localStorage.setItem('edilcheck_current_user', JSON.stringify(userData))
-    localStorage.setItem('edilcheck_current_db_key', `edilcheck_db_${username}`)
-    
-    return true
   }
 
-  const logout = () => {
-    setUser(null)
-    localStorage.removeItem('edilcheck_current_user')
-    localStorage.removeItem('edilcheck_current_db_key')
+  const logout = async () => {
+    await supabase.auth.signOut()
   }
 
   return (
