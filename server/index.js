@@ -237,8 +237,10 @@ app.post('/api/auth/login', async (req, res) => {
     // Find user
     const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
     const user = stmt.get([email]);
-    if (!user) {
-      console.log('❌ User not found:', email);
+    
+    // Check if user exists and has a valid password
+    if (!user || !user.password || typeof user.password !== 'string') {
+      console.log('❌ User not found or invalid password field for:', email);
       return res.status(400).json({ error: 'Credenziali non valide' });
     }
 
