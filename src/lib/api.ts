@@ -6,6 +6,7 @@ const API_BASE_URL = 'http://localhost:3001/api';
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
+  timeout: 10000, // 10 second timeout
 });
 
 // Add auth token to requests
@@ -21,10 +22,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    console.error('API Error:', error);
     if (error.response?.status === 401) {
       localStorage.removeItem('edilcheck_token');
       localStorage.removeItem('edilcheck_user');
-      window.location.href = '/';
+      // Don't redirect automatically, let the auth context handle it
     }
     return Promise.reject(error);
   }
@@ -33,22 +35,42 @@ api.interceptors.response.use(
 // Auth API
 export const authAPI = {
   login: async (email: string, password: string) => {
-    const response = await api.post('/auth/login', { email, password });
-    return response.data;
+    try {
+      const response = await api.post('/auth/login', { email, password });
+      return response.data;
+    } catch (error) {
+      console.error('Login API error:', error);
+      throw error;
+    }
   },
   
   register: async (email: string, password: string) => {
-    const response = await api.post('/auth/register', { email, password });
-    return response.data;
+    try {
+      const response = await api.post('/auth/register', { email, password });
+      return response.data;
+    } catch (error) {
+      console.error('Register API error:', error);
+      throw error;
+    }
   },
   
   logout: async () => {
-    await api.post('/auth/logout');
+    try {
+      await api.post('/auth/logout');
+    } catch (error) {
+      console.error('Logout API error:', error);
+      throw error;
+    }
   },
   
   me: async () => {
-    const response = await api.get('/auth/me');
-    return response.data;
+    try {
+      const response = await api.get('/auth/me');
+      return response.data;
+    } catch (error) {
+      console.error('Me API error:', error);
+      throw error;
+    }
   }
 };
 

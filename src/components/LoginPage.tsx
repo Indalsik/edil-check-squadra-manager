@@ -6,29 +6,38 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { Building2, Moon, Sun } from 'lucide-react'
+import { Building2, Moon, Sun, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 
 export const LoginPage = () => {
   const [loginData, setLoginData] = useState({ email: '', password: '' })
   const [registerData, setRegisterData] = useState({ email: '', password: '', confirmPassword: '' })
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
   const { login, register } = useAuth()
   const { theme, toggleTheme } = useTheme()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setError('')
     
     try {
+      console.log('Starting login process...')
       const result = await login(loginData.email, loginData.password)
+      console.log('Login result:', result)
+      
       if (result.success) {
         toast.success('Login effettuato con successo!')
       } else {
+        setError(result.error || 'Credenziali non valide')
         toast.error(result.error || 'Credenziali non valide')
       }
-    } catch (error) {
-      toast.error('Errore durante il login')
+    } catch (error: any) {
+      console.error('Login error:', error)
+      const errorMessage = 'Errore di connessione al server. Verifica che il server sia avviato.'
+      setError(errorMessage)
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -36,13 +45,16 @@ export const LoginPage = () => {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
     
     if (registerData.password !== registerData.confirmPassword) {
+      setError('Le password non coincidono')
       toast.error('Le password non coincidono')
       return
     }
 
     if (registerData.password.length < 6) {
+      setError('La password deve contenere almeno 6 caratteri')
       toast.error('La password deve contenere almeno 6 caratteri')
       return
     }
@@ -50,14 +62,21 @@ export const LoginPage = () => {
     setIsLoading(true)
     
     try {
+      console.log('Starting registration process...')
       const result = await register(registerData.email, registerData.password)
+      console.log('Registration result:', result)
+      
       if (result.success) {
         toast.success('Registrazione completata con successo!')
       } else {
+        setError(result.error || 'Errore durante la registrazione')
         toast.error(result.error || 'Errore durante la registrazione')
       }
-    } catch (error) {
-      toast.error('Errore durante la registrazione')
+    } catch (error: any) {
+      console.error('Registration error:', error)
+      const errorMessage = 'Errore di connessione al server. Verifica che il server sia avviato.'
+      setError(errorMessage)
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -89,6 +108,13 @@ export const LoginPage = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md flex items-center gap-2 text-red-700">
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">{error}</span>
+            </div>
+          )}
+          
           <Tabs defaultValue="login" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Accedi</TabsTrigger>
@@ -105,6 +131,7 @@ export const LoginPage = () => {
                     value={loginData.email}
                     onChange={(e) => setLoginData({...loginData, email: e.target.value})}
                     required
+                    disabled={isLoading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -115,6 +142,7 @@ export const LoginPage = () => {
                     value={loginData.password}
                     onChange={(e) => setLoginData({...loginData, password: e.target.value})}
                     required
+                    disabled={isLoading}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
@@ -133,6 +161,7 @@ export const LoginPage = () => {
                     value={registerData.email}
                     onChange={(e) => setRegisterData({...registerData, email: e.target.value})}
                     required
+                    disabled={isLoading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -143,6 +172,7 @@ export const LoginPage = () => {
                     value={registerData.password}
                     onChange={(e) => setRegisterData({...registerData, password: e.target.value})}
                     required
+                    disabled={isLoading}
                   />
                 </div>
                 <div className="space-y-2">
@@ -153,6 +183,7 @@ export const LoginPage = () => {
                     value={registerData.confirmPassword}
                     onChange={(e) => setRegisterData({...registerData, confirmPassword: e.target.value})}
                     required
+                    disabled={isLoading}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={isLoading}>
@@ -161,6 +192,10 @@ export const LoginPage = () => {
               </form>
             </TabsContent>
           </Tabs>
+          
+          <div className="mt-4 text-center text-sm text-gray-600">
+            <p>💡 Assicurati che il server backend sia avviato su porta 3001</p>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -34,7 +34,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const savedUser = localStorage.getItem('edilcheck_user')
     
     if (token && savedUser) {
-      setUser(JSON.parse(savedUser))
+      try {
+        setUser(JSON.parse(savedUser))
+      } catch (error) {
+        console.error('Error parsing saved user:', error)
+        localStorage.removeItem('edilcheck_token')
+        localStorage.removeItem('edilcheck_user')
+      }
     }
     
     setIsLoading(false)
@@ -42,7 +48,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (email: string, password: string) => {
     try {
+      console.log('Attempting login for:', email)
       const response = await authAPI.login(email, password)
+      console.log('Login response:', response)
       
       localStorage.setItem('edilcheck_token', response.token)
       localStorage.setItem('edilcheck_user', JSON.stringify(response.user))
@@ -50,16 +58,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       return { success: true }
     } catch (error: any) {
+      console.error('Login error:', error)
       return { 
         success: false, 
-        error: error.response?.data?.error || 'Errore durante il login' 
+        error: error.response?.data?.error || error.message || 'Errore durante il login' 
       }
     }
   }
 
   const register = async (email: string, password: string) => {
     try {
+      console.log('Attempting registration for:', email)
       const response = await authAPI.register(email, password)
+      console.log('Registration response:', response)
       
       localStorage.setItem('edilcheck_token', response.token)
       localStorage.setItem('edilcheck_user', JSON.stringify(response.user))
@@ -67,9 +78,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       
       return { success: true }
     } catch (error: any) {
+      console.error('Registration error:', error)
       return { 
         success: false, 
-        error: error.response?.data?.error || 'Errore durante la registrazione' 
+        error: error.response?.data?.error || error.message || 'Errore durante la registrazione' 
       }
     }
   }
@@ -78,7 +90,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await authAPI.logout()
     } catch (error) {
-      // Ignore logout errors
+      console.error('Logout error:', error)
     } finally {
       localStorage.removeItem('edilcheck_token')
       localStorage.removeItem('edilcheck_user')
