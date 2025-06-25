@@ -35,7 +35,7 @@ export const LoginPage = () => {
       }
     } catch (error: any) {
       console.error('Login error:', error)
-      const errorMessage = 'Errore di connessione al server. Verifica che il server sia avviato.'
+      const errorMessage = 'Errore di connessione. Riprova tra qualche istante.'
       setError(errorMessage)
       toast.error(errorMessage)
     } finally {
@@ -74,7 +74,7 @@ export const LoginPage = () => {
       }
     } catch (error: any) {
       console.error('Registration error:', error)
-      const errorMessage = 'Errore di connessione al server. Verifica che il server sia avviato.'
+      const errorMessage = 'Errore di connessione. Riprova tra qualche istante.'
       setError(errorMessage)
       toast.error(errorMessage)
     } finally {
@@ -194,7 +194,7 @@ export const LoginPage = () => {
           </Tabs>
           
           <div className="mt-4 text-center text-sm text-gray-600">
-            <p>💡 Assicurati che il server backend sia avviato su porta 3001</p>
+            <p>🚀 Sistema integrato - tutto in un'unica applicazione!</p>
           </div>
         </CardContent>
       </Card>

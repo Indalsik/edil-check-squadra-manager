@@ -6,17 +6,19 @@ import jwt from 'jsonwebtoken';
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createServer } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:8080',
+  origin: NODE_ENV === 'development' ? 'http://localhost:3000' : true,
   credentials: true
 }));
 app.use(express.json());
@@ -126,7 +128,7 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-// Auth routes
+// API Routes
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -148,6 +150,7 @@ app.post('/api/auth/register', async (req, res) => {
     
     res.json({ token, user: { id: result.lastInsertRowid, email } });
   } catch (error) {
+    console.error('Registration error:', error);
     res.status(500).json({ error: 'Errore durante la registrazione' });
   }
 });
@@ -173,6 +176,7 @@ app.post('/api/auth/login', async (req, res) => {
     
     res.json({ token, user: { id: user.id, email: user.email } });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({ error: 'Errore durante il login' });
   }
 });
@@ -466,7 +470,24 @@ app.get('/api/sites/:siteId/workers', authenticateToken, (req, res) => {
   }
 });
 
+// Setup Vite in development or serve static files in production
+if (NODE_ENV === 'development') {
+  const vite = await createServer({
+    server: { middlewareMode: true },
+    appType: 'spa'
+  });
+  app.use(vite.ssrFixStacktrace);
+  app.use('*', vite.middlewares);
+} else {
+  // Serve static files in production
+  app.use(express.static('dist'));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
+}
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Edil-Check server running on http://localhost:${PORT}`);
   console.log(`📊 Database: ${dbPath}`);
+  console.log(`🌍 Environment: ${NODE_ENV}`);
 });
