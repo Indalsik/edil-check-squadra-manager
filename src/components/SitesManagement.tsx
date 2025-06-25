@@ -1,43 +1,49 @@
-
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { MapPin, Plus, Edit, Users, Building } from "lucide-react"
+import { MapPin, Plus, Edit, Trash2, Users, Building } from "lucide-react"
+import { database, Site, Worker } from "@/lib/database"
+import { SiteDialog } from "@/components/dialogs/SiteDialog"
+import { toast } from "@/components/ui/sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export function SitesManagement() {
-  const sites = [
-    {
-      id: 1,
-      name: "Ristrutturazione Villa Roma",
-      owner: "Mario Bianchi",
-      address: "Via Roma 123, Milano",
-      status: "Attivo",
-      workers: ["Marco Rossi", "Luca Bianchi", "Antonio Verde"],
-      startDate: "2024-01-15",
-      estimatedEnd: "2024-03-30"
-    },
-    {
-      id: 2,
-      name: "Nuova Costruzione Garibaldi",
-      owner: "Edil Costruzioni SRL",
-      address: "Piazza Garibaldi 45, Milano",
-      status: "Attivo",
-      workers: ["Francesco Neri", "Marco Rossi"],
-      startDate: "2024-02-01",
-      estimatedEnd: "2024-06-15"
-    },
-    {
-      id: 3,
-      name: "Ristrutturazione Uffici",
-      owner: "Tech Company Ltd",
-      address: "Via Montenapoleone 88, Milano",
-      status: "In Pausa",
-      workers: ["Antonio Verde"],
-      startDate: "2024-01-20",
-      estimatedEnd: "2024-04-10"
-    },
-  ]
+  const [sites, setSites] = useState<Site[]>([])
+  const [siteWorkers, setSiteWorkers] = useState<{ [key: number]: Worker[] }>({})
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedSite, setSelectedSite] = useState<Site | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [siteToDelete, setSiteToDelete] = useState<Site | null>(null)
+
+  useEffect(() => {
+    loadSites()
+  }, [])
+
+  const loadSites = async () => {
+    await database.init()
+    const sitesData = database.getSites()
+    setSites(sitesData)
+    
+    // Load workers for each site
+    const workersData: { [key: number]: Worker[] } = {}
+    sitesData.forEach(site => {
+      if (site.id) {
+        workersData[site.id] = database.getSiteWorkers(site.id)
+      }
+    })
+    setSiteWorkers(workersData)
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -52,14 +58,44 @@ export function SitesManagement() {
     }
   }
 
-  const handleAddSite = () => {
-    console.log("Aggiungendo nuovo cantiere...")
-    // TODO: Implementare dialogo per aggiungere cantiere
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase()
   }
 
-  const handleEditSite = (siteId: number) => {
-    console.log("Modificando cantiere:", siteId)
-    // TODO: Implementare dialogo per modificare cantiere
+  const handleAddSite = () => {
+    setSelectedSite(null)
+    setDialogOpen(true)
+  }
+
+  const handleEditSite = (site: Site) => {
+    setSelectedSite(site)
+    setDialogOpen(true)
+  }
+
+  const handleDeleteSite = (site: Site) => {
+    setSiteToDelete(site)
+    setDeleteDialogOpen(true)
+  }
+
+  const confirmDelete = () => {
+    if (siteToDelete) {
+      database.deleteSite(siteToDelete.id!)
+      loadSites()
+      toast.success("Cantiere eliminato con successo")
+      setDeleteDialogOpen(false)
+      setSiteToDelete(null)
+    }
+  }
+
+  const handleSaveSite = (siteData: Omit<Site, 'id'> | Site) => {
+    if ('id' in siteData && siteData.id) {
+      database.updateSite(siteData.id, siteData)
+      toast.success("Cantiere aggiornato con successo")
+    } else {
+      database.addSite(siteData as Omit<Site, 'id'>)
+      toast.success("Cantiere aggiunto con successo")
+    }
+    loadSites()
   }
 
   return (
@@ -116,18 +152,20 @@ export function SitesManagement() {
               </div>
               
               <div>
-                <p className="text-muted-foreground text-sm mb-2">Operai Assegnati ({site.workers.length})</p>
+                <p className="text-muted-foreground text-sm mb-2">
+                  Operai Assegnati ({siteWorkers[site.id!]?.length || 0})
+                </p>
                 <div className="flex flex-wrap gap-2">
-                  {site.workers.map((worker, index) => (
+                  {siteWorkers[site.id!]?.map((worker, index) => (
                     <div key={index} className="flex items-center gap-2 bg-gray-100 px-2 py-1 rounded-md text-sm">
                       <Avatar className="w-6 h-6">
                         <AvatarFallback className="bg-edil-blue text-white text-xs">
-                          {worker.split(' ').map(n => n[0]).join('')}
+                          {getInitials(worker.name)}
                         </AvatarFallback>
                       </Avatar>
-                      <span>{worker}</span>
+                      <span>{worker.name}</span>
                     </div>
-                  ))}
+                  )) || <span className="text-sm text-muted-foreground">Nessun operaio assegnato</span>}
                 </div>
               </div>
               
@@ -136,20 +174,49 @@ export function SitesManagement() {
                   variant="outline" 
                   size="sm" 
                   className="flex-1"
-                  onClick={() => handleEditSite(site.id)}
+                  onClick={() => handleEditSite(site)}
                 >
                   <Edit className="h-4 w-4 mr-1" />
                   Modifica
                 </Button>
-                <Button variant="outline" size="sm" className="bg-green-50 text-green-700 hover:bg-green-100">
-                  <Users className="h-4 w-4 mr-1" />
-                  Gestisci Operai
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-red-600 hover:text-red-700"
+                  onClick={() => handleDeleteSite(site)}
+                >
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      <SiteDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        site={selectedSite}
+        onSave={handleSaveSite}
+      />
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Conferma eliminazione</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sei sicuro di voler eliminare il cantiere {siteToDelete?.name}? 
+              Questa azione non può essere annullata.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
+              Elimina
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -1,56 +1,45 @@
-
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Clock, Plus, Calendar, MapPin } from "lucide-react"
+import { Clock, Plus, Calendar, MapPin, Edit, Trash2 } from "lucide-react"
+import { database, Worker, Site } from "@/lib/database"
+import { TimeEntryDialog } from "@/components/dialogs/TimeEntryDialog"
+import { toast } from "@/components/ui/sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export function TimeTracking() {
-  const timeEntries = [
-    {
-      id: 1,
-      worker: "Marco Rossi",
-      date: "2024-01-15",
-      startTime: "08:00",
-      endTime: "17:00",
-      totalHours: 8,
-      location: "Cantiere Via Roma",
-      project: "Ristrutturazione Palazzo",
-      status: "Confermato"
-    },
-    {
-      id: 2,
-      worker: "Luca Bianchi",
-      date: "2024-01-15",
-      startTime: "07:30",
-      endTime: "16:30",
-      totalHours: 8,
-      location: "Cantiere Corso Italia",
-      project: "Nuova Costruzione",
-      status: "Confermato"
-    },
-    {
-      id: 3,
-      worker: "Antonio Verde",
-      date: "2024-01-15",
-      startTime: "09:00",
-      endTime: "13:00",
-      totalHours: 4,
-      location: "Cantiere Via Roma",
-      project: "Impianti Elettrici",
-      status: "In Attesa"
-    },
-    {
-      id: 4,
-      worker: "Francesco Neri",
-      date: "2024-01-15",
-      startTime: "08:30",
-      endTime: "17:30",
-      totalHours: 8,
-      location: "Cantiere Piazza Centrale",
-      project: "Rifacimento Bagni",
-      status: "Confermato"
-    },
-  ]
+  const [timeEntries, setTimeEntries] = useState<any[]>([])
+  const [workers, setWorkers] = useState<Worker[]>([])
+  const [sites, setSites] = useState<Site[]>([])
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedEntry, setSelectedEntry] = useState<any | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [entryToDelete, setEntryToDelete] = useState<any | null>(null)
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const loadData = async () => {
+    await database.init()
+    const entriesData = database.getTimeEntries()
+    const workersData = database.getWorkers()
+    const sitesData = database.getSites()
+    
+    setTimeEntries(entriesData)
+    setWorkers(workersData)
+    setSites(sitesData)
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -63,7 +52,49 @@ export function TimeTracking() {
     }
   }
 
-  const totalHoursToday = timeEntries.reduce((sum, entry) => sum + entry.totalHours, 0)
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase()
+  }
+
+  const handleAddEntry = () => {
+    setSelectedEntry(null)
+    setDialogOpen(true)
+  }
+
+  const handleEditEntry = (entry: any) => {
+    setSelectedEntry(entry)
+    setDialogOpen(true)
+  }
+
+  const handleDeleteEntry = (entry: any) => {
+    setEntryToDelete(entry)
+    setDeleteDialogOpen(true)
+  }
+
+  const confirmDelete = () => {
+    if (entryToDelete) {
+      database.deleteTimeEntry(entryToDelete.id)
+      loadData()
+      toast.success("Registrazione ore eliminata con successo")
+      setDeleteDialogOpen(false)
+      setEntryToDelete(null)
+    }
+  }
+
+  const handleSaveEntry = (entryData: any) => {
+    if ('id' in entryData && entryData.id) {
+      database.updateTimeEntry(entryData.id, entryData)
+      toast.success("Registrazione ore aggiornata con successo")
+    } else {
+      database.addTimeEntry(entryData)
+      toast.success("Ore registrate con successo")
+    }
+    loadData()
+  }
+
+  const totalHoursToday = timeEntries
+    .filter(entry => entry.date === new Date().toISOString().split('T')[0])
+    .reduce((sum, entry) => sum + entry.totalHours, 0)
 
   return (
     <div className="space-y-6">
@@ -75,7 +106,7 @@ export function TimeTracking() {
           </h2>
           <p className="text-muted-foreground">Tracciamento delle ore lavorate dal team</p>
         </div>
-        <Button className="bg-edil-orange hover:bg-edil-orange/90">
+        <Button onClick={handleAddEntry} className="bg-edil-orange hover:bg-edil-orange/90">
           <Plus className="h-4 w-4 mr-2" />
           Registra Ore
         </Button>
@@ -89,7 +120,12 @@ export function TimeTracking() {
             Riepilogo Giornaliero
           </CardTitle>
           <CardDescription className="text-white/80">
-            Lunedì, 15 Gennaio 2024
+            {new Date().toLocaleDateString('it-IT', { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -100,11 +136,11 @@ export function TimeTracking() {
             </div>
             <div>
               <p className="text-white/80">Operai Attivi</p>
-              <p className="text-2xl font-bold">{timeEntries.length}</p>
+              <p className="text-2xl font-bold">{workers.filter(w => w.status === 'Attivo').length}</p>
             </div>
             <div>
               <p className="text-white/80">Cantieri</p>
-              <p className="text-2xl font-bold">3</p>
+              <p className="text-2xl font-bold">{sites.filter(s => s.status === 'Attivo').length}</p>
             </div>
           </div>
         </CardContent>
@@ -118,15 +154,19 @@ export function TimeTracking() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-edil-blue text-white rounded-lg flex items-center justify-center font-semibold">
-                    {entry.worker.split(' ').map(n => n[0]).join('')}
+                    {getInitials(entry.workerName)}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg">{entry.worker}</h3>
-                    <p className="text-muted-foreground">{entry.project}</p>
+                    <h3 className="font-semibold text-lg">{entry.workerName}</h3>
+                    <p className="text-muted-foreground">{entry.siteName}</p>
                   </div>
                 </div>
                 
                 <div className="flex items-center gap-6">
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground">Data</p>
+                    <p className="font-semibold">{entry.date}</p>
+                  </div>
                   <div className="text-center">
                     <p className="text-sm text-muted-foreground">Inizio</p>
                     <p className="font-semibold">{entry.startTime}</p>
@@ -144,17 +184,56 @@ export function TimeTracking() {
                       {entry.status}
                     </Badge>
                   </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditEntry(entry)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700"
+                      onClick={() => handleDeleteEntry(entry)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              
-              <div className="flex items-center gap-2 mt-4 text-muted-foreground">
-                <MapPin className="h-4 w-4" />
-                <span>{entry.location}</span>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      <TimeEntryDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        timeEntry={selectedEntry}
+        workers={workers}
+        sites={sites}
+        onSave={handleSaveEntry}
+      />
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Conferma eliminazione</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sei sicuro di voler eliminare questa registrazione ore? 
+              Questa azione non può essere annullata.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
+              Elimina
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

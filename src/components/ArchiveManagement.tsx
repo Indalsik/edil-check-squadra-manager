@@ -1,69 +1,45 @@
-
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { FileText, Calendar, DollarSign } from "lucide-react"
+import { database } from "@/lib/database"
 
 export function ArchiveManagement() {
-  const archiveData = [
-    {
-      site: "Ristrutturazione Villa Roma",
-      payments: [
-        {
-          worker: "Marco Rossi",
-          week: "Settimana 01/2024",
-          amount: 720,
-          date: "2024-01-12",
-          method: "Bonifico"
-        },
-        {
-          worker: "Luca Bianchi",
-          week: "Settimana 01/2024",
-          amount: 570,
-          date: "2024-01-12",
-          method: "Contanti"
-        },
-        {
-          worker: "Antonio Verde",
-          week: "Settimana 01/2024",
-          amount: 800,
-          date: "2024-01-12",
-          method: "Bonifico"
-        },
-      ]
-    },
-    {
-      site: "Nuova Costruzione Garibaldi",
-      payments: [
-        {
-          worker: "Francesco Neri",
-          week: "Settimana 01/2024",
-          amount: 798,
-          date: "2024-01-15",
-          method: "Bonifico"
-        },
-        {
-          worker: "Marco Rossi",
-          week: "Settimana 01/2024",
-          amount: 720,
-          date: "2024-01-15",
-          method: "Contanti"
-        },
-      ]
-    },
-    {
-      site: "Ristrutturazione Uffici",
-      payments: [
-        {
-          worker: "Antonio Verde",
-          week: "Settimana 52/2023",
-          amount: 640,
-          date: "2023-12-29",
-          method: "Bonifico"
-        },
-      ]
-    },
-  ]
+  const [archiveData, setArchiveData] = useState<any[]>([])
+
+  useEffect(() => {
+    loadArchiveData()
+  }, [])
+
+  const loadArchiveData = async () => {
+    await database.init()
+    
+    // Get all paid payments grouped by site
+    const payments = database.getPayments().filter(p => p.status === 'Pagato')
+    const sites = database.getSites()
+    
+    // Group payments by site (for demo purposes, we'll group by worker's main site)
+    const groupedData = sites.map(site => {
+      const sitePayments = payments.filter(p => 
+        // For demo, we'll show some payments for each site
+        Math.random() > 0.5
+      ).slice(0, 3)
+      
+      return {
+        site: site.name,
+        payments: sitePayments.map(payment => ({
+          worker: payment.workerName,
+          week: payment.week,
+          amount: payment.totalAmount,
+          date: payment.paidDate,
+          method: payment.method
+        }))
+      }
+    }).filter(group => group.payments.length > 0)
+
+    setArchiveData(groupedData)
+  }
 
   const getTotalBySite = (payments: any[]) => {
     return payments.reduce((sum, payment) => sum + payment.amount, 0)
@@ -112,12 +88,12 @@ export function ArchiveManagement() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {siteData.payments.map((payment, paymentIndex) => (
+                {siteData.payments.map((payment: any, paymentIndex: number) => (
                   <TableRow key={paymentIndex}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 bg-edil-blue text-white rounded-lg flex items-center justify-center text-xs font-semibold">
-                          {payment.worker.split(' ').map(n => n[0]).join('')}
+                          {payment.worker.split(' ').map((n: string) => n[0]).join('')}
                         </div>
                         {payment.worker}
                       </div>

@@ -1,19 +1,59 @@
-
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Users, Clock, Calendar, MapPin, Wallet, TrendingUp, AlertCircle, CheckCircle } from "lucide-react"
+import { database } from "@/lib/database"
 
 interface DashboardOverviewProps {
   onSectionChange: (section: string) => void;
 }
 
 export function DashboardOverview({ onSectionChange }: DashboardOverviewProps) {
-  const stats = [
+  const [stats, setStats] = useState({
+    activeWorkers: 0,
+    activeSites: 0,
+    pendingPayments: 0,
+    todayHours: 0
+  })
+  const [recentActivities, setRecentActivities] = useState<any[]>([])
+  const [paymentsPreview, setPaymentsPreview] = useState<any[]>([])
+
+  useEffect(() => {
+    loadDashboardData()
+  }, [])
+
+  const loadDashboardData = async () => {
+    await database.init()
+    
+    // Load stats
+    const dashboardStats = database.getDashboardStats()
+    setStats(dashboardStats)
+
+    // Load recent time entries for activities
+    const timeEntries = database.getTimeEntries().slice(0, 3)
+    const activities = timeEntries.map(entry => ({
+      id: entry.id,
+      type: "clock-in",
+      worker: entry.workerName,
+      action: "ha registrato ore",
+      time: entry.startTime,
+      site: entry.siteName
+    }))
+    setRecentActivities(activities)
+
+    // Load payments preview
+    const payments = database.getPayments()
+    const pendingPayments = payments.filter(p => p.status === 'Da Pagare').slice(0, 2)
+    const paidPayments = payments.filter(p => p.status === 'Pagato').slice(0, 1)
+    setPaymentsPreview([...pendingPayments, ...paidPayments])
+  }
+
+  const statsConfig = [
     {
       title: "Operai Attivi",
-      value: "12",
-      description: "3 in più rispetto al mese scorso",
+      value: stats.activeWorkers.toString(),
+      description: "Operai attualmente attivi",
       icon: Users,
       color: "text-blue-600",
       bgColor: "bg-blue-100",
@@ -21,72 +61,30 @@ export function DashboardOverview({ onSectionChange }: DashboardOverviewProps) {
     },
     {
       title: "Ore Lavorate Oggi",
-      value: "94",
-      description: "Media di 7.8 ore per operaio",
+      value: stats.todayHours.toString(),
+      description: "Ore registrate oggi",
       icon: Clock,
       color: "text-green-600",
       bgColor: "bg-green-100",
       action: () => onSectionChange("timetracking")
     },
     {
-      title: "Permessi Pendenti",
-      value: "3",
-      description: "Da approvare questa settimana",
+      title: "Pagamenti Pendenti",
+      value: stats.pendingPayments.toString(),
+      description: "Da elaborare",
       icon: Calendar,
       color: "text-yellow-600",
       bgColor: "bg-yellow-100",
-      action: () => onSectionChange("permissions")
+      action: () => onSectionChange("payments")
     },
     {
       title: "Cantieri Attivi",
-      value: "5",
-      description: "2 nuovi progetti iniziati",
+      value: stats.activeSites.toString(),
+      description: "Progetti in corso",
       icon: MapPin,
       color: "text-purple-600",
       bgColor: "bg-purple-100",
       action: () => onSectionChange("sites")
-    },
-  ]
-
-  const recentActivities = [
-    {
-      id: 1,
-      type: "clock-in",
-      worker: "Marco Rossi",
-      action: "ha iniziato il turno",
-      time: "08:30",
-      site: "Via Roma 123"
-    },
-    {
-      id: 2,
-      type: "permission",
-      worker: "Luca Bianchi",
-      action: "ha richiesto permesso",
-      time: "09:15",
-      site: "3 giorni a Marzo"
-    },
-    {
-      id: 3,
-      type: "completion",
-      worker: "Antonio Verde",
-      action: "ha completato il lavoro",
-      time: "17:00",
-      site: "Piazza Garibaldi 45"
-    },
-  ]
-
-  const paymentsPreview = [
-    {
-      worker: "Francesco Neri",
-      amount: "€1,240",
-      period: "15-30 Gennaio",
-      status: "pending"
-    },
-    {
-      worker: "Marco Rossi",
-      amount: "€1,580",
-      period: "15-30 Gennaio", 
-      status: "paid"
     },
   ]
 
@@ -99,7 +97,7 @@ export function DashboardOverview({ onSectionChange }: DashboardOverviewProps) {
 
       {/* Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat, index) => (
+        {statsConfig.map((stat, index) => (
           <Card key={index} className="hover:shadow-lg transition-shadow cursor-pointer" onClick={stat.action}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">
@@ -161,28 +159,28 @@ export function DashboardOverview({ onSectionChange }: DashboardOverviewProps) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Wallet className="h-5 w-5" />
-              Pagamenti in Sospeso
+              Pagamenti
             </CardTitle>
             <CardDescription>
-              Pagamenti da elaborare questa settimana
+              Stato dei pagamenti
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {paymentsPreview.map((payment, index) => (
               <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div>
-                  <p className="font-medium text-sm">{payment.worker}</p>
-                  <p className="text-xs text-gray-600">{payment.period}</p>
+                  <p className="font-medium text-sm">{payment.workerName}</p>
+                  <p className="text-xs text-gray-600">{payment.week}</p>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-edil-blue">{payment.amount}</p>
+                  <p className="font-bold text-edil-blue">€{payment.totalAmount}</p>
                   <Badge 
-                    className={payment.status === 'paid' 
+                    className={payment.status === 'Pagato' 
                       ? 'bg-green-100 text-green-800' 
                       : 'bg-yellow-100 text-yellow-800'
                     }
                   >
-                    {payment.status === 'paid' ? (
+                    {payment.status === 'Pagato' ? (
                       <><CheckCircle className="w-3 h-3 mr-1" /> Pagato</>
                     ) : (
                       <><AlertCircle className="w-3 h-3 mr-1" /> In Sospeso</>

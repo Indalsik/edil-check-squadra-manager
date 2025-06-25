@@ -1,57 +1,39 @@
-
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Users, Plus, Edit, Trash2, Phone, Mail } from "lucide-react"
+import { database, Worker } from "@/lib/database"
+import { WorkerDialog } from "@/components/dialogs/WorkerDialog"
+import { toast } from "@/components/ui/sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export function WorkersManagement() {
-  const workers = [
-    {
-      id: 1,
-      name: "Marco Rossi",
-      role: "Capocantiere",
-      phone: "+39 333 1234567",
-      email: "marco.rossi@edilcheck.it",
-      status: "Attivo",
-      hoursWeek: 40,
-      hourlyRate: 18,
-      initials: "MR"
-    },
-    {
-      id: 2,
-      name: "Luca Bianchi",
-      role: "Muratore", 
-      phone: "+39 333 7654321",
-      email: "luca.bianchi@edilcheck.it",
-      status: "Attivo",
-      hoursWeek: 38,
-      hourlyRate: 15,
-      initials: "LB"
-    },
-    {
-      id: 3,
-      name: "Antonio Verde",
-      role: "Elettricista",
-      phone: "+39 333 9876543",
-      email: "antonio.verde@edilcheck.it",
-      status: "In Permesso",
-      hoursWeek: 0,
-      hourlyRate: 20,
-      initials: "AV"
-    },
-    {
-      id: 4,
-      name: "Francesco Neri", 
-      role: "Idraulico",
-      phone: "+39 333 5432109",
-      email: "francesco.neri@edilcheck.it",
-      status: "Attivo",
-      hoursWeek: 42,
-      hourlyRate: 19,
-      initials: "FN"
-    },
-  ]
+  const [workers, setWorkers] = useState<Worker[]>([])
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [workerToDelete, setWorkerToDelete] = useState<Worker | null>(null)
+
+  useEffect(() => {
+    loadWorkers()
+  }, [])
+
+  const loadWorkers = async () => {
+    await database.init()
+    const workersData = database.getWorkers()
+    setWorkers(workersData)
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -64,19 +46,44 @@ export function WorkersManagement() {
     }
   }
 
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase()
+  }
+
   const handleAddWorker = () => {
-    console.log("Aggiungendo nuovo operaio...")
-    // TODO: Implementare dialogo per aggiungere operaio
+    setSelectedWorker(null)
+    setDialogOpen(true)
   }
 
-  const handleEditWorker = (workerId: number) => {
-    console.log("Modificando operaio:", workerId)
-    // TODO: Implementare dialogo per modificare operaio
+  const handleEditWorker = (worker: Worker) => {
+    setSelectedWorker(worker)
+    setDialogOpen(true)
   }
 
-  const handleDeleteWorker = (workerId: number) => {
-    console.log("Eliminando operaio:", workerId)
-    // TODO: Implementare conferma ed eliminazione operaio
+  const handleDeleteWorker = (worker: Worker) => {
+    setWorkerToDelete(worker)
+    setDeleteDialogOpen(true)
+  }
+
+  const confirmDelete = () => {
+    if (workerToDelete) {
+      database.deleteWorker(workerToDelete.id!)
+      loadWorkers()
+      toast.success("Operaio eliminato con successo")
+      setDeleteDialogOpen(false)
+      setWorkerToDelete(null)
+    }
+  }
+
+  const handleSaveWorker = (workerData: Omit<Worker, 'id'> | Worker) => {
+    if ('id' in workerData && workerData.id) {
+      database.updateWorker(workerData.id, workerData)
+      toast.success("Operaio aggiornato con successo")
+    } else {
+      database.addWorker(workerData as Omit<Worker, 'id'>)
+      toast.success("Operaio aggiunto con successo")
+    }
+    loadWorkers()
   }
 
   return (
@@ -103,7 +110,7 @@ export function WorkersManagement() {
                 <div className="flex items-center gap-3">
                   <Avatar>
                     <AvatarFallback className="bg-edil-blue text-white font-semibold">
-                      {worker.initials}
+                      {getInitials(worker.name)}
                     </AvatarFallback>
                   </Avatar>
                   <div>
@@ -118,11 +125,7 @@ export function WorkersManagement() {
             </CardHeader>
             
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Ore/Settimana</p>
-                  <p className="font-semibold">{worker.hoursWeek}h</p>
-                </div>
+              <div className="grid grid-cols-1 gap-2 text-sm">
                 <div>
                   <p className="text-muted-foreground">Tariffa Oraria</p>
                   <p className="font-semibold">€{worker.hourlyRate}/h</p>
@@ -145,7 +148,7 @@ export function WorkersManagement() {
                   variant="outline" 
                   size="sm" 
                   className="flex-1"
-                  onClick={() => handleEditWorker(worker.id)}
+                  onClick={() => handleEditWorker(worker)}
                 >
                   <Edit className="h-4 w-4 mr-1" />
                   Modifica
@@ -154,7 +157,7 @@ export function WorkersManagement() {
                   variant="outline" 
                   size="sm" 
                   className="text-red-600 hover:text-red-700"
-                  onClick={() => handleDeleteWorker(worker.id)}
+                  onClick={() => handleDeleteWorker(worker)}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -163,6 +166,31 @@ export function WorkersManagement() {
           </Card>
         ))}
       </div>
+
+      <WorkerDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        worker={selectedWorker}
+        onSave={handleSaveWorker}
+      />
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Conferma eliminazione</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sei sicuro di voler eliminare l'operaio {workerToDelete?.name}? 
+              Questa azione non può essere annullata.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annulla</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
+              Elimina
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
