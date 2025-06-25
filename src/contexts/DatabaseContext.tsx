@@ -29,6 +29,7 @@ const createRemoteDatabase = (host: string, port: string) => ({
     try {
       const response = await fetch(`http://${host}:${port}/health`)
       if (!response.ok) throw new Error('Server not available')
+      console.log('✅ Remote database connected')
       return true
     } catch (error) {
       throw new Error(`Cannot connect to remote server at ${host}:${port}`)
@@ -36,32 +37,163 @@ const createRemoteDatabase = (host: string, port: string) => ({
   },
 
   // Workers
-  getWorkers: () => workersAPI.getAll(),
-  addWorker: (worker: any) => workersAPI.create(worker),
-  updateWorker: (id: number, worker: any) => workersAPI.update(id, worker),
-  deleteWorker: (id: number) => workersAPI.delete(id),
+  getWorkers: async () => {
+    try {
+      return await workersAPI.getAll()
+    } catch (error: any) {
+      console.error('Failed to get workers:', error.message)
+      throw error
+    }
+  },
+  addWorker: async (worker: any) => {
+    try {
+      return await workersAPI.create(worker)
+    } catch (error: any) {
+      console.error('Failed to add worker:', error.message)
+      throw error
+    }
+  },
+  updateWorker: async (id: number, worker: any) => {
+    try {
+      return await workersAPI.update(id, worker)
+    } catch (error: any) {
+      console.error('Failed to update worker:', error.message)
+      throw error
+    }
+  },
+  deleteWorker: async (id: number) => {
+    try {
+      return await workersAPI.delete(id)
+    } catch (error: any) {
+      console.error('Failed to delete worker:', error.message)
+      throw error
+    }
+  },
 
   // Sites
-  getSites: () => sitesAPI.getAll(),
-  addSite: (site: any) => sitesAPI.create(site),
-  updateSite: (id: number, site: any) => sitesAPI.update(id, site),
-  deleteSite: (id: number) => sitesAPI.delete(id),
-  getSiteWorkers: (siteId: number) => sitesAPI.getWorkers(siteId),
+  getSites: async () => {
+    try {
+      return await sitesAPI.getAll()
+    } catch (error: any) {
+      console.error('Failed to get sites:', error.message)
+      throw error
+    }
+  },
+  addSite: async (site: any) => {
+    try {
+      return await sitesAPI.create(site)
+    } catch (error: any) {
+      console.error('Failed to add site:', error.message)
+      throw error
+    }
+  },
+  updateSite: async (id: number, site: any) => {
+    try {
+      return await sitesAPI.update(id, site)
+    } catch (error: any) {
+      console.error('Failed to update site:', error.message)
+      throw error
+    }
+  },
+  deleteSite: async (id: number) => {
+    try {
+      return await sitesAPI.delete(id)
+    } catch (error: any) {
+      console.error('Failed to delete site:', error.message)
+      throw error
+    }
+  },
+  getSiteWorkers: async (siteId: number) => {
+    try {
+      return await sitesAPI.getWorkers(siteId)
+    } catch (error: any) {
+      console.error('Failed to get site workers:', error.message)
+      return []
+    }
+  },
 
   // Time Entries
-  getTimeEntries: () => timeEntriesAPI.getAll(),
-  addTimeEntry: (entry: any) => timeEntriesAPI.create(entry),
-  updateTimeEntry: (id: number, entry: any) => timeEntriesAPI.update(id, entry),
-  deleteTimeEntry: (id: number) => timeEntriesAPI.delete(id),
+  getTimeEntries: async () => {
+    try {
+      return await timeEntriesAPI.getAll()
+    } catch (error: any) {
+      console.error('Failed to get time entries:', error.message)
+      throw error
+    }
+  },
+  addTimeEntry: async (entry: any) => {
+    try {
+      return await timeEntriesAPI.create(entry)
+    } catch (error: any) {
+      console.error('Failed to add time entry:', error.message)
+      throw error
+    }
+  },
+  updateTimeEntry: async (id: number, entry: any) => {
+    try {
+      return await timeEntriesAPI.update(id, entry)
+    } catch (error: any) {
+      console.error('Failed to update time entry:', error.message)
+      throw error
+    }
+  },
+  deleteTimeEntry: async (id: number) => {
+    try {
+      return await timeEntriesAPI.delete(id)
+    } catch (error: any) {
+      console.error('Failed to delete time entry:', error.message)
+      throw error
+    }
+  },
 
   // Payments
-  getPayments: () => paymentsAPI.getAll(),
-  addPayment: (payment: any) => paymentsAPI.create(payment),
-  updatePayment: (id: number, payment: any) => paymentsAPI.update(id, payment),
-  deletePayment: (id: number) => paymentsAPI.delete(id),
+  getPayments: async () => {
+    try {
+      return await paymentsAPI.getAll()
+    } catch (error: any) {
+      console.error('Failed to get payments:', error.message)
+      throw error
+    }
+  },
+  addPayment: async (payment: any) => {
+    try {
+      return await paymentsAPI.create(payment)
+    } catch (error: any) {
+      console.error('Failed to add payment:', error.message)
+      throw error
+    }
+  },
+  updatePayment: async (id: number, payment: any) => {
+    try {
+      return await paymentsAPI.update(id, payment)
+    } catch (error: any) {
+      console.error('Failed to update payment:', error.message)
+      throw error
+    }
+  },
+  deletePayment: async (id: number) => {
+    try {
+      return await paymentsAPI.delete(id)
+    } catch (error: any) {
+      console.error('Failed to delete payment:', error.message)
+      throw error
+    }
+  },
 
   // Dashboard
-  getDashboardStats: () => dashboardAPI.getStats(),
+  getDashboardStats: async () => {
+    try {
+      return await dashboardAPI.getStats()
+    } catch (error: any) {
+      console.error('Failed to get dashboard stats:', error.message)
+      return {
+        activeWorkers: 0,
+        activeSites: 0,
+        pendingPayments: 0,
+        todayHours: 0
+      }
+    }
+  },
 
   // Utility methods
   assignWorkerToSite: (siteId: number, workerId: number) => {
@@ -97,26 +229,34 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       if (mode === 'local') {
+        console.log('🔧 Initializing local database...')
         await localDatabase.init()
         setDatabase(localDatabase)
         setIsConnected(true)
+        console.log('✅ Local database ready')
       } else {
+        console.log(`🔧 Initializing remote database at ${remoteConfig.host}:${remoteConfig.port}...`)
         const remoteDb = createRemoteDatabase(remoteConfig.host, remoteConfig.port)
         await remoteDb.init()
         setDatabase(remoteDb)
         setIsConnected(true)
+        console.log('✅ Remote database ready')
       }
     } catch (error: any) {
+      console.error('❌ Database initialization failed:', error.message)
       setConnectionError(error.message)
+      
       // Fallback to local database if remote fails
       if (mode === 'remote') {
-        console.warn('Remote database failed, falling back to local:', error.message)
+        console.warn('🔄 Remote database failed, falling back to local...')
         try {
           await localDatabase.init()
           setDatabase(localDatabase)
           setIsConnected(true)
           setConnectionError(`Remote failed: ${error.message}. Using local database.`)
+          console.log('✅ Fallback to local database successful')
         } catch (localError: any) {
+          console.error('❌ Local fallback also failed:', localError.message)
           setConnectionError(`Both databases failed: ${error.message}`)
         }
       }
@@ -124,10 +264,12 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const handleSetMode = (newMode: DatabaseMode) => {
+    console.log(`🔄 Switching database mode: ${mode} → ${newMode}`)
     setMode(newMode)
   }
 
   const setRemoteConfig = (host: string, port: string) => {
+    console.log(`🔧 Updating remote config: ${host}:${port}`)
     setRemoteConfigState({ host, port })
   }
 

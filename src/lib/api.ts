@@ -28,8 +28,9 @@ const createApiInstance = () => {
         options.body = JSON.stringify(config.data)
       }
 
+      // Always add token if available (except for auth endpoints)
       const token = localStorage.getItem('edilcheck_token')
-      if (token) {
+      if (token && !config.url.includes('/auth/')) {
         options.headers = {
           ...options.headers,
           'Authorization': `Bearer ${token}`
@@ -37,22 +38,40 @@ const createApiInstance = () => {
       }
 
       try {
+        console.log(`🌐 API Request: ${config.method || 'GET'} ${url}`, {
+          headers: options.headers,
+          hasToken: !!token,
+          isAuthEndpoint: config.url.includes('/auth/')
+        })
+
         const response = await fetch(url, options)
         
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: 'Network error' }))
+          let errorData
+          try {
+            errorData = await response.json()
+          } catch {
+            errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+          }
+          
+          console.error(`❌ API Error: ${response.status}`, errorData)
+          
+          // Handle authentication errors
+          if (response.status === 401 || response.status === 403) {
+            console.warn('🔒 Authentication failed, clearing token')
+            localStorage.removeItem('edilcheck_token')
+            localStorage.removeItem('edilcheck_user')
+            // Don't redirect here, let the auth context handle it
+          }
+          
           throw new Error(errorData.error || `HTTP ${response.status}`)
         }
 
         const data = await response.json()
+        console.log(`✅ API Success: ${config.method || 'GET'} ${url}`, data)
         return { data }
       } catch (error: any) {
-        console.error('API Error:', error.message)
-        if (error.message.includes('401') || error.message.includes('403')) {
-          localStorage.removeItem('edilcheck_token')
-          localStorage.removeItem('edilcheck_user')
-          window.location.href = '/'
-        }
+        console.error(`❌ API Request failed: ${config.method || 'GET'} ${url}`, error.message)
         throw error
       }
     },
