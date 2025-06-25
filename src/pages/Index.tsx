@@ -8,39 +8,42 @@ import { TimeTracking } from "@/components/TimeTracking"
 import { PaymentsManagement } from "@/components/PaymentsManagement"
 import { SitesManagement } from "@/components/SitesManagement"
 import { ArchiveManagement } from "@/components/ArchiveManagement"
+import { DatabaseConnectionDialog } from "@/components/DatabaseConnectionDialog"
 import { useAuth } from "@/contexts/AuthContext"
+import { useDatabase } from "@/contexts/DatabaseContext"
 import { useTheme } from "@/contexts/ThemeContext"
-import { database } from "@/lib/database"
-import { LogOut, Moon, Sun, User } from "lucide-react"
+import { LogOut, Moon, Sun, User, Database, AlertCircle } from "lucide-react"
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard")
   const [isInitialized, setIsInitialized] = useState(false)
+  const [showDatabaseDialog, setShowDatabaseDialog] = useState(false)
   const { user, logout } = useAuth()
+  const { mode, isConnected, connectionError, database } = useDatabase()
   const { theme, toggleTheme } = useTheme()
 
   useEffect(() => {
     const initDatabase = async () => {
-      if (user) {
+      if (user && isConnected) {
         try {
           await database.init()
           setIsInitialized(true)
         } catch (error) {
           console.error('Failed to initialize database:', error)
-          setIsInitialized(true) // Continue anyway for API-based system
+          setIsInitialized(true)
         }
       }
     }
 
     initDatabase()
-  }, [user])
+  }, [user, isConnected, database])
 
   if (!isInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-edil-blue mx-auto"></div>
-          <p className="mt-4 text-lg">Connessione al server...</p>
+          <p className="mt-4 text-lg">Inizializzazione database...</p>
         </div>
       </div>
     )
@@ -88,6 +91,27 @@ const Index = () => {
             <SidebarTrigger className="mb-4" />
             
             <div className="flex items-center gap-2">
+              {/* Database Status */}
+              <Button
+                variant="outline"
+                onClick={() => setShowDatabaseDialog(true)}
+                className="bg-white dark:bg-gray-800"
+              >
+                <Database className="h-4 w-4 mr-2" />
+                <span className="text-sm">
+                  {mode === 'local' ? 'Locale' : 'Remoto'}
+                </span>
+                <div className={`w-2 h-2 rounded-full ml-2 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+              </Button>
+
+              {/* Connection Warning */}
+              {connectionError && connectionError.includes('Using local database') && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">
+                  <AlertCircle className="h-3 w-3" />
+                  <span>Fallback locale</span>
+                </div>
+              )}
+              
               <div className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 rounded-lg border shadow-sm">
                 <User className="h-4 w-4 text-edil-blue" />
                 <span className="text-sm font-medium">{user?.email}</span>
@@ -115,6 +139,11 @@ const Index = () => {
           {renderContent()}
         </main>
       </div>
+
+      <DatabaseConnectionDialog 
+        open={showDatabaseDialog} 
+        onOpenChange={setShowDatabaseDialog} 
+      />
     </SidebarProvider>
   )
 }

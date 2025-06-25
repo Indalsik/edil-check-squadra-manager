@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Users, Plus, Edit, Trash2, Phone, Mail } from "lucide-react"
-import { database, Worker } from "@/lib/database"
+import { useDatabase } from "@/contexts/DatabaseContext"
+import { Worker } from "@/lib/database"
 import { WorkerDialog } from "@/components/dialogs/WorkerDialog"
 import { toast } from "@/components/ui/sonner"
 import {
@@ -24,15 +25,21 @@ export function WorkersManagement() {
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [workerToDelete, setWorkerToDelete] = useState<Worker | null>(null)
+  const { database } = useDatabase()
 
   useEffect(() => {
     loadWorkers()
-  }, [])
+  }, [database])
 
   const loadWorkers = async () => {
-    await database.init()
-    const workersData = database.getWorkers()
-    setWorkers(workersData)
+    try {
+      await database.init()
+      const workersData = await database.getWorkers()
+      setWorkers(workersData)
+    } catch (error) {
+      console.error('Error loading workers:', error)
+      toast.error("Errore nel caricamento operai")
+    }
   }
 
   const getStatusColor = (status: string) => {
@@ -65,25 +72,33 @@ export function WorkersManagement() {
     setDeleteDialogOpen(true)
   }
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (workerToDelete) {
-      database.deleteWorker(workerToDelete.id!)
-      loadWorkers()
-      toast.success("Operaio eliminato con successo")
-      setDeleteDialogOpen(false)
-      setWorkerToDelete(null)
+      try {
+        await database.deleteWorker(workerToDelete.id!)
+        loadWorkers()
+        toast.success("Operaio eliminato con successo")
+        setDeleteDialogOpen(false)
+        setWorkerToDelete(null)
+      } catch (error) {
+        toast.error("Errore nell'eliminazione operaio")
+      }
     }
   }
 
-  const handleSaveWorker = (workerData: Omit<Worker, 'id'> | Worker) => {
-    if ('id' in workerData && workerData.id) {
-      database.updateWorker(workerData.id, workerData)
-      toast.success("Operaio aggiornato con successo")
-    } else {
-      database.addWorker(workerData as Omit<Worker, 'id'>)
-      toast.success("Operaio aggiunto con successo")
+  const handleSaveWorker = async (workerData: Omit<Worker, 'id'> | Worker) => {
+    try {
+      if ('id' in workerData && workerData.id) {
+        await database.updateWorker(workerData.id, workerData)
+        toast.success("Operaio aggiornato con successo")
+      } else {
+        await database.addWorker(workerData as Omit<Worker, 'id'>)
+        toast.success("Operaio aggiunto con successo")
+      }
+      loadWorkers()
+    } catch (error) {
+      toast.error("Errore nel salvataggio operaio")
     }
-    loadWorkers()
   }
 
   return (
