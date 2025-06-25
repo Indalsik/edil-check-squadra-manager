@@ -1,6 +1,10 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { supabase } from '@/lib/supabase'
-import type { User } from '@supabase/supabase-js'
+import { authAPI } from '@/lib/api'
+
+interface User {
+  id: number
+  email: string
+}
 
 interface AuthContextType {
   user: User | null
@@ -25,59 +29,61 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      setIsLoading(false)
-    })
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setUser(session?.user ?? null)
-        setIsLoading(false)
-      }
-    )
-
-    return () => subscription.unsubscribe()
+    // Check for existing token
+    const token = localStorage.getItem('edilcheck_token')
+    const savedUser = localStorage.getItem('edilcheck_user')
+    
+    if (token && savedUser) {
+      setUser(JSON.parse(savedUser))
+    }
+    
+    setIsLoading(false)
   }, [])
 
   const login = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        return { success: false, error: error.message }
-      }
-
+      const response = await authAPI.login(email, password)
+      
+      localStorage.setItem('edilcheck_token', response.token)
+      localStorage.setItem('edilcheck_user', JSON.stringify(response.user))
+      setUser(response.user)
+      
       return { success: true }
-    } catch (error) {
-      return { success: false, error: 'Errore durante il login' }
+    } catch (error: any) {
+      return { 
+        success: false, 
+        error: error.response?.data?.error || 'Errore durante il login' 
+      }
     }
   }
 
   const register = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-      })
-
-      if (error) {
-        return { success: false, error: error.message }
-      }
-
+      const response = await authAPI.register(email, password)
+      
+      localStorage.setItem('edilcheck_token', response.token)
+      localStorage.setItem('edilcheck_user', JSON.stringify(response.user))
+      setUser(response.user)
+      
       return { success: true }
-    } catch (error) {
-      return { success: false, error: 'Errore durante la registrazione' }
+    } catch (error: any) {
+      return { 
+        success: false, 
+        error: error.response?.data?.error || 'Errore durante la registrazione' 
+      }
     }
   }
 
   const logout = async () => {
-    await supabase.auth.signOut()
+    try {
+      await authAPI.logout()
+    } catch (error) {
+      // Ignore logout errors
+    } finally {
+      localStorage.removeItem('edilcheck_token')
+      localStorage.removeItem('edilcheck_user')
+      setUser(null)
+    }
   }
 
   return (

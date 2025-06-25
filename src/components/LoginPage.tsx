@@ -52,7 +52,7 @@ export const LoginPage = () => {
     try {
       const result = await register(registerData.email, registerData.password)
       if (result.success) {
-        toast.success('Registrazione completata! Controlla la tua email per confermare l\'account.')
+        toast.success('Registrazione completata con successo!')
       } else {
         toast.error(result.error || 'Errore durante la registrazione')
       }
@@ -85,7 +85,7 @@ export const LoginPage = () => {
             </CardTitle>
           </div>
           <CardDescription>
-            Sistema di gestione per l'edilizia
+            Sistema di gestione per l'edilizia - Self Hosted
           </CardDescription>
         </CardHeader>
         <CardContent>

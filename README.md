@@ -1,73 +1,224 @@
-# Welcome to your Lovable project
+# Edil-Check - Sistema Self-Hosted per Gestione Operai Edili
 
-## Project info
+Sistema completo di gestione per squadre edili con backend Node.js/Express e database SQLite.
 
-**URL**: https://lovable.dev/projects/f4f7e6a2-752a-4441-8715-45403ed49bb4
+## 🚀 Caratteristiche
 
-## How can I edit this code?
+- **🔐 Autenticazione Multi-Utente** - Ogni utente ha il proprio spazio isolato
+- **📊 Database SQLite** - Leggero e performante, un database per installazione
+- **🏗️ Gestione Completa** - Operai, cantieri, ore di lavoro, pagamenti
+- **📱 Responsive** - Accessibile da desktop e mobile
+- **🌙 Dark Mode** - Tema chiaro/scuro
+- **🔒 Sicurezza** - JWT tokens, password hashate con bcrypt
 
-There are several ways of editing your application.
+## 📋 Requisiti
 
-**Use Lovable**
+- Node.js 18+ 
+- npm o yarn
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/f4f7e6a2-752a-4441-8715-45403ed49bb4) and start prompting.
+## 🛠️ Installazione
 
-Changes made via Lovable will be committed automatically to this repo.
+1. **Clona il repository**
+```bash
+git clone <repository-url>
+cd edil-check
+```
 
-**Use your preferred IDE**
+2. **Installa le dipendenze**
+```bash
+npm install
+```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+3. **Avvia il sistema**
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+Il sistema sarà disponibile su:
+- **Frontend**: http://localhost:8080
+- **Backend API**: http://localhost:3001
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 🗄️ Database
 
-**Use GitHub Codespaces**
+Il database SQLite viene creato automaticamente in `server/database.db` al primo avvio.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### Schema Database:
+- **users** - Utenti del sistema
+- **workers** - Operai (isolati per utente)
+- **sites** - Cantieri (isolati per utente)
+- **time_entries** - Registrazioni ore lavorate
+- **payments** - Gestione pagamenti
+- **site_workers** - Assegnazioni operai-cantieri
 
-## What technologies are used for this project?
+## 🔧 Configurazione
 
-This project is built with:
+### Variabili d'Ambiente (opzionali)
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Crea un file `.env` nella root:
 
-## How can I deploy this project?
+```env
+PORT=3001
+JWT_SECRET=your-super-secret-jwt-key
+```
 
-Simply open [Lovable](https://lovable.dev/projects/f4f7e6a2-752a-4441-8715-45403ed49bb4) and click on Share -> Publish.
+### Configurazione Produzione
 
-## Can I connect a custom domain to my Lovable project?
+Per il deployment in produzione:
 
-Yes, you can!
+1. **Build del frontend**
+```bash
+npm run build
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+2. **Configurazione server**
+```bash
+# Modifica server/index.js per servire i file statici
+app.use(express.static('dist'));
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+3. **Avvio produzione**
+```bash
+NODE_ENV=production npm run server
+```
+
+## 🌐 Accesso Remoto
+
+Per rendere il sistema accessibile da remoto:
+
+1. **Configura il CORS** nel server per il tuo dominio
+2. **Usa un reverse proxy** (nginx, Apache)
+3. **Configura HTTPS** per la sicurezza
+4. **Firewall** - Apri solo le porte necessarie
+
+### Esempio nginx:
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    
+    location /api {
+        proxy_pass http://localhost:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+## 📱 Funzionalità
+
+### 👥 Gestione Operai
+- Anagrafica completa
+- Ruoli e specializzazioni
+- Tariffe orarie personalizzate
+- Stati (Attivo, In Permesso, Inattivo)
+
+### 🏗️ Gestione Cantieri
+- Informazioni progetto
+- Date inizio/fine
+- Assegnazione operai
+- Stati cantiere
+
+### ⏰ Tracciamento Ore
+- Registrazione ore giornaliere
+- Calcolo automatico ore totali
+- Stati approvazione
+- Storico completo
+
+### 💰 Gestione Pagamenti
+- Calcolo automatico stipendi
+- Gestione straordinari
+- Tracking pagamenti
+- Metodi di pagamento
+
+### 📊 Dashboard
+- Statistiche in tempo reale
+- Attività recenti
+- Pagamenti in sospeso
+- Ore lavorate oggi
+
+## 🔒 Sicurezza
+
+- **Password hashate** con bcrypt
+- **JWT tokens** per autenticazione
+- **Isolamento dati** per utente
+- **Validazione input** server-side
+- **CORS configurabile**
+
+## 🚀 Deployment
+
+### Docker (Opzionale)
+
+```dockerfile
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+EXPOSE 3001
+CMD ["npm", "run", "server"]
+```
+
+### Systemd Service
+
+```ini
+[Unit]
+Description=Edil-Check Server
+After=network.target
+
+[Service]
+Type=simple
+User=edilcheck
+WorkingDirectory=/path/to/edil-check
+ExecStart=/usr/bin/node server/index.js
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## 📝 API Endpoints
+
+### Autenticazione
+- `POST /api/auth/register` - Registrazione
+- `POST /api/auth/login` - Login
+- `POST /api/auth/logout` - Logout
+- `GET /api/auth/me` - Info utente
+
+### Operai
+- `GET /api/workers` - Lista operai
+- `POST /api/workers` - Crea operaio
+- `PUT /api/workers/:id` - Aggiorna operaio
+- `DELETE /api/workers/:id` - Elimina operaio
+
+### Cantieri
+- `GET /api/sites` - Lista cantieri
+- `POST /api/sites` - Crea cantiere
+- `PUT /api/sites/:id` - Aggiorna cantiere
+- `DELETE /api/sites/:id` - Elimina cantiere
+
+### Ore di Lavoro
+- `GET /api/time-entries` - Lista registrazioni
+- `POST /api/time-entries` - Crea registrazione
+- `PUT /api/time-entries/:id` - Aggiorna registrazione
+- `DELETE /api/time-entries/:id` - Elimina registrazione
+
+### Pagamenti
+- `GET /api/payments` - Lista pagamenti
+- `POST /api/payments` - Crea pagamento
+- `PUT /api/payments/:id` - Aggiorna pagamento
+- `DELETE /api/payments/:id` - Elimina pagamento
+
+## 🤝 Supporto
+
+Per supporto e domande, contatta il team di sviluppo.
+
+## 📄 Licenza
+
+Questo progetto è rilasciato sotto licenza MIT.

@@ -27,6 +27,7 @@ const Index = () => {
           setIsInitialized(true)
         } catch (error) {
           console.error('Failed to initialize database:', error)
+          setIsInitialized(true) // Continue anyway for API-based system
         }
       }
     }
@@ -39,7 +40,7 @@ const Index = () => {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-edil-blue mx-auto"></div>
-          <p className="mt-4 text-lg">Inizializzazione database...</p>
+          <p className="mt-4 text-lg">Connessione al server...</p>
         </div>
       </div>
     )
