@@ -61,81 +61,81 @@ class Database {
   }
 
   // Workers CRUD
-  getWorkers(): Promise<Worker[]> {
-    return workersAPI.getAll();
+  async getWorkers(): Promise<Worker[]> {
+    return await workersAPI.getAll();
   }
 
-  addWorker(worker: Omit<Worker, 'id'>): Promise<Worker> {
-    return workersAPI.create(worker);
+  async addWorker(worker: Omit<Worker, 'id'>): Promise<Worker> {
+    return await workersAPI.create(worker);
   }
 
-  updateWorker(id: number, worker: Partial<Worker>): Promise<Worker> {
-    return workersAPI.update(id, worker);
+  async updateWorker(id: number, worker: Partial<Worker>): Promise<Worker> {
+    return await workersAPI.update(id, worker);
   }
 
-  deleteWorker(id: number): Promise<void> {
-    return workersAPI.delete(id);
+  async deleteWorker(id: number): Promise<void> {
+    await workersAPI.delete(id);
   }
 
   // Sites CRUD
-  getSites(): Promise<Site[]> {
-    return sitesAPI.getAll();
+  async getSites(): Promise<Site[]> {
+    return await sitesAPI.getAll();
   }
 
-  addSite(site: Omit<Site, 'id'>): Promise<Site> {
-    return sitesAPI.create(site);
+  async addSite(site: Omit<Site, 'id'>): Promise<Site> {
+    return await sitesAPI.create(site);
   }
 
-  updateSite(id: number, site: Partial<Site>): Promise<Site> {
-    return sitesAPI.update(id, site);
+  async updateSite(id: number, site: Partial<Site>): Promise<Site> {
+    return await sitesAPI.update(id, site);
   }
 
-  deleteSite(id: number): Promise<void> {
-    return sitesAPI.delete(id);
+  async deleteSite(id: number): Promise<void> {
+    await sitesAPI.delete(id);
   }
 
   // Time Entries CRUD
-  getTimeEntries(): Promise<any[]> {
-    return timeEntriesAPI.getAll();
+  async getTimeEntries(): Promise<any[]> {
+    return await timeEntriesAPI.getAll();
   }
 
-  addTimeEntry(entry: Omit<TimeEntry, 'id'>): Promise<TimeEntry> {
-    return timeEntriesAPI.create(entry);
+  async addTimeEntry(entry: Omit<TimeEntry, 'id'>): Promise<TimeEntry> {
+    return await timeEntriesAPI.create(entry);
   }
 
-  updateTimeEntry(id: number, entry: Partial<TimeEntry>): Promise<TimeEntry> {
-    return timeEntriesAPI.update(id, entry);
+  async updateTimeEntry(id: number, entry: Partial<TimeEntry>): Promise<TimeEntry> {
+    return await timeEntriesAPI.update(id, entry);
   }
 
-  deleteTimeEntry(id: number): Promise<void> {
-    return timeEntriesAPI.delete(id);
+  async deleteTimeEntry(id: number): Promise<void> {
+    await timeEntriesAPI.delete(id);
   }
 
   // Payments CRUD
-  getPayments(): Promise<any[]> {
-    return paymentsAPI.getAll();
+  async getPayments(): Promise<any[]> {
+    return await paymentsAPI.getAll();
   }
 
-  addPayment(payment: Omit<Payment, 'id'>): Promise<Payment> {
-    return paymentsAPI.create(payment);
+  async addPayment(payment: Omit<Payment, 'id'>): Promise<Payment> {
+    return await paymentsAPI.create(payment);
   }
 
-  updatePayment(id: number, payment: Partial<Payment>): Promise<Payment> {
-    return paymentsAPI.update(id, payment);
+  async updatePayment(id: number, payment: Partial<Payment>): Promise<Payment> {
+    return await paymentsAPI.update(id, payment);
   }
 
-  deletePayment(id: number): Promise<void> {
-    return paymentsAPI.delete(id);
+  async deletePayment(id: number): Promise<void> {
+    await paymentsAPI.delete(id);
   }
 
   // Dashboard stats
-  getDashboardStats() {
-    return dashboardAPI.getStats();
+  async getDashboardStats() {
+    return await dashboardAPI.getStats();
   }
 
   // Site Workers
-  getSiteWorkers(siteId: number): Promise<Worker[]> {
-    return sitesAPI.getWorkers(siteId);
+  async getSiteWorkers(siteId: number): Promise<Worker[]> {
+    return await sitesAPI.getWorkers(siteId);
   }
 
   async assignWorkerToSite(siteId: number, workerId: number): Promise<void> {

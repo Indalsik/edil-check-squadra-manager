@@ -1,13 +1,11 @@
 import axios from 'axios';
 
-// Use relative URLs since we're serving from the same server
-const API_BASE_URL = '/api';
+const API_BASE_URL = 'http://localhost:3001/api';
 
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
-  timeout: 10000, // 10 second timeout
 });
 
 // Add auth token to requests
@@ -23,11 +21,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error('API Error:', error);
     if (error.response?.status === 401) {
       localStorage.removeItem('edilcheck_token');
       localStorage.removeItem('edilcheck_user');
-      // Don't redirect automatically, let the auth context handle it
+      window.location.href = '/';
     }
     return Promise.reject(error);
   }
@@ -36,42 +33,22 @@ api.interceptors.response.use(
 // Auth API
 export const authAPI = {
   login: async (email: string, password: string) => {
-    try {
-      const response = await api.post('/auth/login', { email, password });
-      return response.data;
-    } catch (error) {
-      console.error('Login API error:', error);
-      throw error;
-    }
+    const response = await api.post('/auth/login', { email, password });
+    return response.data;
   },
   
   register: async (email: string, password: string) => {
-    try {
-      const response = await api.post('/auth/register', { email, password });
-      return response.data;
-    } catch (error) {
-      console.error('Register API error:', error);
-      throw error;
-    }
+    const response = await api.post('/auth/register', { email, password });
+    return response.data;
   },
   
   logout: async () => {
-    try {
-      await api.post('/auth/logout');
-    } catch (error) {
-      console.error('Logout API error:', error);
-      throw error;
-    }
+    await api.post('/auth/logout');
   },
   
   me: async () => {
-    try {
-      const response = await api.get('/auth/me');
-      return response.data;
-    } catch (error) {
-      console.error('Me API error:', error);
-      throw error;
-    }
+    const response = await api.get('/auth/me');
+    return response.data;
   }
 };
 
