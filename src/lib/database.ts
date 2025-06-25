@@ -58,6 +58,7 @@ export interface SiteWorker {
 class Database {
   private db: any = null;
   private SQL: any = null;
+  private currentUser: string = '';
 
   async init() {
     if (this.db) return;
@@ -66,8 +67,12 @@ class Database {
       locateFile: (file: string) => `https://sql.js.org/dist/${file}`
     });
 
+    // Get current user's database key
+    const dbKey = localStorage.getItem('edilcheck_current_db_key') || 'edilcheck_db_default';
+    this.currentUser = dbKey;
+
     // Try to load existing database from localStorage
-    const savedDb = localStorage.getItem('edilcheck_db');
+    const savedDb = localStorage.getItem(dbKey);
     if (savedDb) {
       const uint8Array = new Uint8Array(JSON.parse(savedDb));
       this.db = new this.SQL.Database(uint8Array);
@@ -236,7 +241,8 @@ class Database {
 
   private saveToLocalStorage() {
     const data = this.db.export();
-    localStorage.setItem('edilcheck_db', JSON.stringify(Array.from(data)));
+    const dbKey = localStorage.getItem('edilcheck_current_db_key') || 'edilcheck_db_default';
+    localStorage.setItem(dbKey, JSON.stringify(Array.from(data)));
   }
 
   // Workers CRUD
