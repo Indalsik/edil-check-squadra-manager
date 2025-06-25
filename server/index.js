@@ -148,6 +148,7 @@ app.post('/api/auth/register', async (req, res) => {
     
     res.json({ token, user: { id: result.lastInsertRowid, email } });
   } catch (error) {
+    console.error('Registration error:', error);
     res.status(500).json({ error: 'Errore durante la registrazione' });
   }
 });
@@ -173,6 +174,7 @@ app.post('/api/auth/login', async (req, res) => {
     
     res.json({ token, user: { id: user.id, email: user.email } });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({ error: 'Errore durante il login' });
   }
 });
@@ -191,6 +193,7 @@ app.get('/api/workers', authenticateToken, (req, res) => {
     const workers = db.prepare('SELECT * FROM workers WHERE user_id = ? ORDER BY name').all(req.user.userId);
     res.json(workers);
   } catch (error) {
+    console.error('Get workers error:', error);
     res.status(500).json({ error: 'Errore nel recupero operai' });
   }
 });
@@ -206,6 +209,7 @@ app.post('/api/workers', authenticateToken, (req, res) => {
     const worker = db.prepare('SELECT * FROM workers WHERE id = ?').get(result.lastInsertRowid);
     res.json(worker);
   } catch (error) {
+    console.error('Create worker error:', error);
     res.status(500).json({ error: 'Errore nella creazione operaio' });
   }
 });
@@ -224,6 +228,7 @@ app.put('/api/workers/:id', authenticateToken, (req, res) => {
     const worker = db.prepare('SELECT * FROM workers WHERE id = ? AND user_id = ?').get(id, req.user.userId);
     res.json(worker);
   } catch (error) {
+    console.error('Update worker error:', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento operaio' });
   }
 });
@@ -234,6 +239,7 @@ app.delete('/api/workers/:id', authenticateToken, (req, res) => {
     db.prepare('DELETE FROM workers WHERE id = ? AND user_id = ?').run(id, req.user.userId);
     res.json({ message: 'Operaio eliminato' });
   } catch (error) {
+    console.error('Delete worker error:', error);
     res.status(500).json({ error: 'Errore nell\'eliminazione operaio' });
   }
 });
@@ -244,6 +250,7 @@ app.get('/api/sites', authenticateToken, (req, res) => {
     const sites = db.prepare('SELECT * FROM sites WHERE user_id = ? ORDER BY name').all(req.user.userId);
     res.json(sites);
   } catch (error) {
+    console.error('Get sites error:', error);
     res.status(500).json({ error: 'Errore nel recupero cantieri' });
   }
 });
@@ -259,6 +266,7 @@ app.post('/api/sites', authenticateToken, (req, res) => {
     const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(result.lastInsertRowid);
     res.json(site);
   } catch (error) {
+    console.error('Create site error:', error);
     res.status(500).json({ error: 'Errore nella creazione cantiere' });
   }
 });
@@ -277,6 +285,7 @@ app.put('/api/sites/:id', authenticateToken, (req, res) => {
     const site = db.prepare('SELECT * FROM sites WHERE id = ? AND user_id = ?').get(id, req.user.userId);
     res.json(site);
   } catch (error) {
+    console.error('Update site error:', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento cantiere' });
   }
 });
@@ -287,6 +296,7 @@ app.delete('/api/sites/:id', authenticateToken, (req, res) => {
     db.prepare('DELETE FROM sites WHERE id = ? AND user_id = ?').run(id, req.user.userId);
     res.json({ message: 'Cantiere eliminato' });
   } catch (error) {
+    console.error('Delete site error:', error);
     res.status(500).json({ error: 'Errore nell\'eliminazione cantiere' });
   }
 });
@@ -304,6 +314,7 @@ app.get('/api/time-entries', authenticateToken, (req, res) => {
     `).all(req.user.userId);
     res.json(entries);
   } catch (error) {
+    console.error('Get time entries error:', error);
     res.status(500).json({ error: 'Errore nel recupero ore' });
   }
 });
@@ -325,6 +336,7 @@ app.post('/api/time-entries', authenticateToken, (req, res) => {
     `).get(result.lastInsertRowid);
     res.json(entry);
   } catch (error) {
+    console.error('Create time entry error:', error);
     res.status(500).json({ error: 'Errore nella registrazione ore' });
   }
 });
@@ -349,6 +361,7 @@ app.put('/api/time-entries/:id', authenticateToken, (req, res) => {
     `).get(id, req.user.userId);
     res.json(entry);
   } catch (error) {
+    console.error('Update time entry error:', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento ore' });
   }
 });
@@ -359,6 +372,7 @@ app.delete('/api/time-entries/:id', authenticateToken, (req, res) => {
     db.prepare('DELETE FROM time_entries WHERE id = ? AND user_id = ?').run(id, req.user.userId);
     res.json({ message: 'Registrazione ore eliminata' });
   } catch (error) {
+    console.error('Delete time entry error:', error);
     res.status(500).json({ error: 'Errore nell\'eliminazione ore' });
   }
 });
@@ -375,6 +389,7 @@ app.get('/api/payments', authenticateToken, (req, res) => {
     `).all(req.user.userId);
     res.json(payments);
   } catch (error) {
+    console.error('Get payments error:', error);
     res.status(500).json({ error: 'Errore nel recupero pagamenti' });
   }
 });
@@ -395,6 +410,7 @@ app.post('/api/payments', authenticateToken, (req, res) => {
     `).get(result.lastInsertRowid);
     res.json(payment);
   } catch (error) {
+    console.error('Create payment error:', error);
     res.status(500).json({ error: 'Errore nella creazione pagamento' });
   }
 });
@@ -418,6 +434,7 @@ app.put('/api/payments/:id', authenticateToken, (req, res) => {
     `).get(id, req.user.userId);
     res.json(payment);
   } catch (error) {
+    console.error('Update payment error:', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento pagamento' });
   }
 });
@@ -428,26 +445,44 @@ app.delete('/api/payments/:id', authenticateToken, (req, res) => {
     db.prepare('DELETE FROM payments WHERE id = ? AND user_id = ?').run(id, req.user.userId);
     res.json({ message: 'Pagamento eliminato' });
   } catch (error) {
+    console.error('Delete payment error:', error);
     res.status(500).json({ error: 'Errore nell\'eliminazione pagamento' });
   }
 });
 
-// Dashboard stats
+// Dashboard stats - FIXED VERSION
 app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
   try {
-    const activeWorkers = db.prepare('SELECT COUNT(*) as count FROM workers WHERE user_id = ? AND status = "Attivo"').get(req.user.userId).count;
-    const activeSites = db.prepare('SELECT COUNT(*) as count FROM sites WHERE user_id = ? AND status = "Attivo"').get(req.user.userId).count;
-    const pendingPayments = db.prepare('SELECT COUNT(*) as count FROM payments WHERE user_id = ? AND status = "Da Pagare"').get(req.user.userId).count;
-    const todayHours = db.prepare('SELECT COALESCE(SUM(total_hours), 0) as total FROM time_entries WHERE user_id = ? AND date = date("now")').get(req.user.userId).total;
+    console.log('Getting dashboard stats for user:', req.user.userId);
+    
+    // Get active workers count
+    const activeWorkersQuery = db.prepare('SELECT COUNT(*) as count FROM workers WHERE user_id = ? AND status = ?');
+    const activeWorkers = activeWorkersQuery.get(req.user.userId, 'Attivo')?.count || 0;
+    
+    // Get active sites count
+    const activeSitesQuery = db.prepare('SELECT COUNT(*) as count FROM sites WHERE user_id = ? AND status = ?');
+    const activeSites = activeSitesQuery.get(req.user.userId, 'Attivo')?.count || 0;
+    
+    // Get pending payments count
+    const pendingPaymentsQuery = db.prepare('SELECT COUNT(*) as count FROM payments WHERE user_id = ? AND status = ?');
+    const pendingPayments = pendingPaymentsQuery.get(req.user.userId, 'Da Pagare')?.count || 0;
+    
+    // Get today's hours
+    const todayHoursQuery = db.prepare('SELECT COALESCE(SUM(total_hours), 0) as total FROM time_entries WHERE user_id = ? AND date = date("now")');
+    const todayHours = todayHoursQuery.get(req.user.userId)?.total || 0;
 
-    res.json({
+    const stats = {
       activeWorkers,
       activeSites,
       pendingPayments,
       todayHours
-    });
+    };
+
+    console.log('Dashboard stats:', stats);
+    res.json(stats);
   } catch (error) {
-    res.status(500).json({ error: 'Errore nel recupero statistiche' });
+    console.error('Dashboard stats error:', error);
+    res.status(500).json({ error: 'Errore nel recupero statistiche', details: error.message });
   }
 });
 
@@ -462,6 +497,7 @@ app.get('/api/sites/:siteId/workers', authenticateToken, (req, res) => {
     `).all(siteId, req.user.userId);
     res.json(workers);
   } catch (error) {
+    console.error('Get site workers error:', error);
     res.status(500).json({ error: 'Errore nel recupero operai cantiere' });
   }
 });
