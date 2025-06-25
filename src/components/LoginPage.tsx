@@ -250,7 +250,7 @@ export const LoginPage = () => {
             <Info className="h-4 w-4 text-blue-600" />
             <AlertDescription className="text-blue-800 text-xs">
               <strong>Nota:</strong> Se ricevi errori di "email già registrata", significa che l'account esiste già sul server. 
-              Usa la tab "Accedi" con la password corretta, oppure registra un nuovo account con un'email diversa.
+              Usa la tab "Accedi\" con la password corretta, oppure registra un nuovo account con un'email diversa.
             </AlertDescription>
           </Alert>
         </div>
