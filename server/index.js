@@ -3,7 +3,8 @@ import cors from 'cors';
 import session from 'express-session';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import Database from 'better-sqlite3';
+import initSqlJs from 'sql.js';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -40,20 +41,41 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Database setup with better error handling
+// Database setup with sql.js
 let db;
+const dbPath = path.join(process.cwd(), 'database.db');
+
 try {
-  const dbPath = path.join(process.cwd(), 'database.db');
-  console.log('📊 Initializing database at:', dbPath);
-  db = new Database(dbPath);
+  console.log('📊 Initializing SQL.js database at:', dbPath);
   
-  // Test database connection
-  db.exec('SELECT 1');
+  const SQL = await initSqlJs();
+  
+  // Try to load existing database file
+  let data;
+  try {
+    data = fs.readFileSync(dbPath);
+    console.log('✅ Existing database file loaded');
+  } catch (err) {
+    console.log('📝 Creating new database file');
+    data = null;
+  }
+  
+  db = new SQL.Database(data);
   console.log('✅ Database connection successful');
 } catch (error) {
   console.error('❌ Database initialization failed:', error);
   process.exit(1);
 }
+
+// Helper function to save database to file
+const saveDatabase = () => {
+  try {
+    const data = db.export();
+    fs.writeFileSync(dbPath, data);
+  } catch (error) {
+    console.error('❌ Error saving database:', error);
+  }
+};
 
 // Initialize database tables
 try {
@@ -134,6 +156,7 @@ try {
       UNIQUE(site_id, worker_id)
     );
   `);
+  saveDatabase();
   console.log('✅ Database tables initialized');
 } catch (error) {
   console.error('❌ Database table creation failed:', error);
@@ -176,7 +199,8 @@ app.post('/api/auth/register', async (req, res) => {
     }
     
     // Check if user exists
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    const stmt = db.prepare('SELECT id FROM users WHERE email = ?');
+    const existingUser = stmt.get([email]);
     if (existingUser) {
       console.log('❌ User already exists:', email);
       return res.status(400).json({ error: 'Email già registrata' });
@@ -186,13 +210,15 @@ app.post('/api/auth/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     
     // Create user
-    const result = db.prepare('INSERT INTO users (email, password) VALUES (?, ?)').run(email, hashedPassword);
+    const insertStmt = db.prepare('INSERT INTO users (email, password) VALUES (?, ?)');
+    const result = insertStmt.run([email, hashedPassword]);
+    saveDatabase();
     
     // Generate token
-    const token = jwt.sign({ userId: result.lastInsertRowid, email }, JWT_SECRET);
+    const token = jwt.sign({ userId: result.lastID, email }, JWT_SECRET);
     
     console.log('✅ User registered successfully:', email);
-    res.json({ token, user: { id: result.lastInsertRowid, email } });
+    res.json({ token, user: { id: result.lastID, email } });
   } catch (error) {
     console.error('❌ Registration error:', error);
     res.status(500).json({ error: 'Errore durante la registrazione', details: error.message });
@@ -209,7 +235,8 @@ app.post('/api/auth/login', async (req, res) => {
     }
     
     // Find user
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
+    const user = stmt.get([email]);
     if (!user) {
       console.log('❌ User not found:', email);
       return res.status(400).json({ error: 'Credenziali non valide' });
@@ -245,7 +272,8 @@ app.get('/api/auth/me', authenticateToken, (req, res) => {
 // Workers routes
 app.get('/api/workers', authenticateToken, (req, res) => {
   try {
-    const workers = db.prepare('SELECT * FROM workers WHERE user_id = ? ORDER BY name').all(req.user.userId);
+    const stmt = db.prepare('SELECT * FROM workers WHERE user_id = ? ORDER BY name');
+    const workers = stmt.all([req.user.userId]);
     res.json(workers);
   } catch (error) {
     console.error('Get workers error:', error);
@@ -256,12 +284,15 @@ app.get('/api/workers', authenticateToken, (req, res) => {
 app.post('/api/workers', authenticateToken, (req, res) => {
   try {
     const { name, role, phone, email, status, hourlyRate } = req.body;
-    const result = db.prepare(`
+    const stmt = db.prepare(`
       INSERT INTO workers (user_id, name, role, phone, email, status, hourly_rate) 
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(req.user.userId, name, role, phone, email, status, hourlyRate);
+    `);
+    const result = stmt.run([req.user.userId, name, role, phone, email, status, hourlyRate]);
+    saveDatabase();
     
-    const worker = db.prepare('SELECT * FROM workers WHERE id = ?').get(result.lastInsertRowid);
+    const getStmt = db.prepare('SELECT * FROM workers WHERE id = ?');
+    const worker = getStmt.get([result.lastID]);
     res.json(worker);
   } catch (error) {
     console.error('Create worker error:', error);
@@ -274,13 +305,16 @@ app.put('/api/workers/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
     const { name, role, phone, email, status, hourlyRate } = req.body;
     
-    db.prepare(`
+    const stmt = db.prepare(`
       UPDATE workers 
       SET name = ?, role = ?, phone = ?, email = ?, status = ?, hourly_rate = ?
       WHERE id = ? AND user_id = ?
-    `).run(name, role, phone, email, status, hourlyRate, id, req.user.userId);
+    `);
+    stmt.run([name, role, phone, email, status, hourlyRate, id, req.user.userId]);
+    saveDatabase();
     
-    const worker = db.prepare('SELECT * FROM workers WHERE id = ? AND user_id = ?').get(id, req.user.userId);
+    const getStmt = db.prepare('SELECT * FROM workers WHERE id = ? AND user_id = ?');
+    const worker = getStmt.get([id, req.user.userId]);
     res.json(worker);
   } catch (error) {
     console.error('Update worker error:', error);
@@ -291,7 +325,9 @@ app.put('/api/workers/:id', authenticateToken, (req, res) => {
 app.delete('/api/workers/:id', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
-    db.prepare('DELETE FROM workers WHERE id = ? AND user_id = ?').run(id, req.user.userId);
+    const stmt = db.prepare('DELETE FROM workers WHERE id = ? AND user_id = ?');
+    stmt.run([id, req.user.userId]);
+    saveDatabase();
     res.json({ message: 'Operaio eliminato' });
   } catch (error) {
     console.error('Delete worker error:', error);
@@ -302,7 +338,8 @@ app.delete('/api/workers/:id', authenticateToken, (req, res) => {
 // Sites routes
 app.get('/api/sites', authenticateToken, (req, res) => {
   try {
-    const sites = db.prepare('SELECT * FROM sites WHERE user_id = ? ORDER BY name').all(req.user.userId);
+    const stmt = db.prepare('SELECT * FROM sites WHERE user_id = ? ORDER BY name');
+    const sites = stmt.all([req.user.userId]);
     res.json(sites);
   } catch (error) {
     console.error('Get sites error:', error);
@@ -313,12 +350,15 @@ app.get('/api/sites', authenticateToken, (req, res) => {
 app.post('/api/sites', authenticateToken, (req, res) => {
   try {
     const { name, owner, address, status, startDate, estimatedEnd } = req.body;
-    const result = db.prepare(`
+    const stmt = db.prepare(`
       INSERT INTO sites (user_id, name, owner, address, status, start_date, estimated_end) 
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(req.user.userId, name, owner, address, status, startDate, estimatedEnd);
+    `);
+    const result = stmt.run([req.user.userId, name, owner, address, status, startDate, estimatedEnd]);
+    saveDatabase();
     
-    const site = db.prepare('SELECT * FROM sites WHERE id = ?').get(result.lastInsertRowid);
+    const getStmt = db.prepare('SELECT * FROM sites WHERE id = ?');
+    const site = getStmt.get([result.lastID]);
     res.json(site);
   } catch (error) {
     console.error('Create site error:', error);
@@ -331,13 +371,16 @@ app.put('/api/sites/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
     const { name, owner, address, status, startDate, estimatedEnd } = req.body;
     
-    db.prepare(`
+    const stmt = db.prepare(`
       UPDATE sites 
       SET name = ?, owner = ?, address = ?, status = ?, start_date = ?, estimated_end = ?
       WHERE id = ? AND user_id = ?
-    `).run(name, owner, address, status, startDate, estimatedEnd, id, req.user.userId);
+    `);
+    stmt.run([name, owner, address, status, startDate, estimatedEnd, id, req.user.userId]);
+    saveDatabase();
     
-    const site = db.prepare('SELECT * FROM sites WHERE id = ? AND user_id = ?').get(id, req.user.userId);
+    const getStmt = db.prepare('SELECT * FROM sites WHERE id = ? AND user_id = ?');
+    const site = getStmt.get([id, req.user.userId]);
     res.json(site);
   } catch (error) {
     console.error('Update site error:', error);
@@ -348,7 +391,9 @@ app.put('/api/sites/:id', authenticateToken, (req, res) => {
 app.delete('/api/sites/:id', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
-    db.prepare('DELETE FROM sites WHERE id = ? AND user_id = ?').run(id, req.user.userId);
+    const stmt = db.prepare('DELETE FROM sites WHERE id = ? AND user_id = ?');
+    stmt.run([id, req.user.userId]);
+    saveDatabase();
     res.json({ message: 'Cantiere eliminato' });
   } catch (error) {
     console.error('Delete site error:', error);
@@ -359,14 +404,15 @@ app.delete('/api/sites/:id', authenticateToken, (req, res) => {
 // Time entries routes
 app.get('/api/time-entries', authenticateToken, (req, res) => {
   try {
-    const entries = db.prepare(`
+    const stmt = db.prepare(`
       SELECT te.*, w.name as workerName, s.name as siteName 
       FROM time_entries te
       JOIN workers w ON te.worker_id = w.id
       JOIN sites s ON te.site_id = s.id
       WHERE te.user_id = ?
       ORDER BY te.date DESC, te.start_time
-    `).all(req.user.userId);
+    `);
+    const entries = stmt.all([req.user.userId]);
     res.json(entries);
   } catch (error) {
     console.error('Get time entries error:', error);
@@ -377,18 +423,21 @@ app.get('/api/time-entries', authenticateToken, (req, res) => {
 app.post('/api/time-entries', authenticateToken, (req, res) => {
   try {
     const { workerId, siteId, date, startTime, endTime, totalHours, status } = req.body;
-    const result = db.prepare(`
+    const stmt = db.prepare(`
       INSERT INTO time_entries (user_id, worker_id, site_id, date, start_time, end_time, total_hours, status) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.user.userId, workerId, siteId, date, startTime, endTime, totalHours, status);
+    `);
+    const result = stmt.run([req.user.userId, workerId, siteId, date, startTime, endTime, totalHours, status]);
+    saveDatabase();
     
-    const entry = db.prepare(`
+    const getStmt = db.prepare(`
       SELECT te.*, w.name as workerName, s.name as siteName 
       FROM time_entries te
       JOIN workers w ON te.worker_id = w.id
       JOIN sites s ON te.site_id = s.id
       WHERE te.id = ?
-    `).get(result.lastInsertRowid);
+    `);
+    const entry = getStmt.get([result.lastID]);
     res.json(entry);
   } catch (error) {
     console.error('Create time entry error:', error);
@@ -401,19 +450,22 @@ app.put('/api/time-entries/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
     const { workerId, siteId, date, startTime, endTime, totalHours, status } = req.body;
     
-    db.prepare(`
+    const stmt = db.prepare(`
       UPDATE time_entries 
       SET worker_id = ?, site_id = ?, date = ?, start_time = ?, end_time = ?, total_hours = ?, status = ?
       WHERE id = ? AND user_id = ?
-    `).run(workerId, siteId, date, startTime, endTime, totalHours, status, id, req.user.userId);
+    `);
+    stmt.run([workerId, siteId, date, startTime, endTime, totalHours, status, id, req.user.userId]);
+    saveDatabase();
     
-    const entry = db.prepare(`
+    const getStmt = db.prepare(`
       SELECT te.*, w.name as workerName, s.name as siteName 
       FROM time_entries te
       JOIN workers w ON te.worker_id = w.id
       JOIN sites s ON te.site_id = s.id
       WHERE te.id = ? AND te.user_id = ?
-    `).get(id, req.user.userId);
+    `);
+    const entry = getStmt.get([id, req.user.userId]);
     res.json(entry);
   } catch (error) {
     console.error('Update time entry error:', error);
@@ -424,7 +476,9 @@ app.put('/api/time-entries/:id', authenticateToken, (req, res) => {
 app.delete('/api/time-entries/:id', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
-    db.prepare('DELETE FROM time_entries WHERE id = ? AND user_id = ?').run(id, req.user.userId);
+    const stmt = db.prepare('DELETE FROM time_entries WHERE id = ? AND user_id = ?');
+    stmt.run([id, req.user.userId]);
+    saveDatabase();
     res.json({ message: 'Registrazione ore eliminata' });
   } catch (error) {
     console.error('Delete time entry error:', error);
@@ -435,13 +489,14 @@ app.delete('/api/time-entries/:id', authenticateToken, (req, res) => {
 // Payments routes
 app.get('/api/payments', authenticateToken, (req, res) => {
   try {
-    const payments = db.prepare(`
+    const stmt = db.prepare(`
       SELECT p.*, w.name as workerName 
       FROM payments p
       JOIN workers w ON p.worker_id = w.id
       WHERE p.user_id = ?
       ORDER BY p.created_at DESC
-    `).all(req.user.userId);
+    `);
+    const payments = stmt.all([req.user.userId]);
     res.json(payments);
   } catch (error) {
     console.error('Get payments error:', error);
@@ -452,17 +507,20 @@ app.get('/api/payments', authenticateToken, (req, res) => {
 app.post('/api/payments', authenticateToken, (req, res) => {
   try {
     const { workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method } = req.body;
-    const result = db.prepare(`
+    const stmt = db.prepare(`
       INSERT INTO payments (user_id, worker_id, week, hours, hourly_rate, total_amount, overtime, status, paid_date, method) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.user.userId, workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method);
+    `);
+    const result = stmt.run([req.user.userId, workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method]);
+    saveDatabase();
     
-    const payment = db.prepare(`
+    const getStmt = db.prepare(`
       SELECT p.*, w.name as workerName 
       FROM payments p
       JOIN workers w ON p.worker_id = w.id
       WHERE p.id = ?
-    `).get(result.lastInsertRowid);
+    `);
+    const payment = getStmt.get([result.lastID]);
     res.json(payment);
   } catch (error) {
     console.error('Create payment error:', error);
@@ -475,18 +533,21 @@ app.put('/api/payments/:id', authenticateToken, (req, res) => {
     const { id } = req.params;
     const { workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method } = req.body;
     
-    db.prepare(`
+    const stmt = db.prepare(`
       UPDATE payments 
       SET worker_id = ?, week = ?, hours = ?, hourly_rate = ?, total_amount = ?, overtime = ?, status = ?, paid_date = ?, method = ?
       WHERE id = ? AND user_id = ?
-    `).run(workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method, id, req.user.userId);
+    `);
+    stmt.run([workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method, id, req.user.userId]);
+    saveDatabase();
     
-    const payment = db.prepare(`
+    const getStmt = db.prepare(`
       SELECT p.*, w.name as workerName 
       FROM payments p
       JOIN workers w ON p.worker_id = w.id
       WHERE p.id = ? AND p.user_id = ?
-    `).get(id, req.user.userId);
+    `);
+    const payment = getStmt.get([id, req.user.userId]);
     res.json(payment);
   } catch (error) {
     console.error('Update payment error:', error);
@@ -497,7 +558,9 @@ app.put('/api/payments/:id', authenticateToken, (req, res) => {
 app.delete('/api/payments/:id', authenticateToken, (req, res) => {
   try {
     const { id } = req.params;
-    db.prepare('DELETE FROM payments WHERE id = ? AND user_id = ?').run(id, req.user.userId);
+    const stmt = db.prepare('DELETE FROM payments WHERE id = ? AND user_id = ?');
+    stmt.run([id, req.user.userId]);
+    saveDatabase();
     res.json({ message: 'Pagamento eliminato' });
   } catch (error) {
     console.error('Delete payment error:', error);
@@ -511,20 +574,20 @@ app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
     console.log('📊 Getting dashboard stats for user:', req.user.userId);
     
     // Get active workers count
-    const activeWorkersQuery = db.prepare('SELECT COUNT(*) as count FROM workers WHERE user_id = ? AND status = ?');
-    const activeWorkers = activeWorkersQuery.get(req.user.userId, 'Attivo')?.count || 0;
+    const activeWorkersStmt = db.prepare('SELECT COUNT(*) as count FROM workers WHERE user_id = ? AND status = ?');
+    const activeWorkers = activeWorkersStmt.get([req.user.userId, 'Attivo'])?.count || 0;
     
     // Get active sites count
-    const activeSitesQuery = db.prepare('SELECT COUNT(*) as count FROM sites WHERE user_id = ? AND status = ?');
-    const activeSites = activeSitesQuery.get(req.user.userId, 'Attivo')?.count || 0;
+    const activeSitesStmt = db.prepare('SELECT COUNT(*) as count FROM sites WHERE user_id = ? AND status = ?');
+    const activeSites = activeSitesStmt.get([req.user.userId, 'Attivo'])?.count || 0;
     
     // Get pending payments count
-    const pendingPaymentsQuery = db.prepare('SELECT COUNT(*) as count FROM payments WHERE user_id = ? AND status = ?');
-    const pendingPayments = pendingPaymentsQuery.get(req.user.userId, 'Da Pagare')?.count || 0;
+    const pendingPaymentsStmt = db.prepare('SELECT COUNT(*) as count FROM payments WHERE user_id = ? AND status = ?');
+    const pendingPayments = pendingPaymentsStmt.get([req.user.userId, 'Da Pagare'])?.count || 0;
     
     // Get today's hours
-    const todayHoursQuery = db.prepare('SELECT COALESCE(SUM(total_hours), 0) as total FROM time_entries WHERE user_id = ? AND date = date("now")');
-    const todayHours = todayHoursQuery.get(req.user.userId)?.total || 0;
+    const todayHoursStmt = db.prepare('SELECT COALESCE(SUM(total_hours), 0) as total FROM time_entries WHERE user_id = ? AND date = date("now")');
+    const todayHours = todayHoursStmt.get([req.user.userId])?.total || 0;
 
     const stats = {
       activeWorkers,
@@ -545,11 +608,12 @@ app.get('/api/dashboard/stats', authenticateToken, (req, res) => {
 app.get('/api/sites/:siteId/workers', authenticateToken, (req, res) => {
   try {
     const { siteId } = req.params;
-    const workers = db.prepare(`
+    const stmt = db.prepare(`
       SELECT w.* FROM workers w 
       JOIN site_workers sw ON w.id = sw.worker_id 
       WHERE sw.site_id = ? AND w.user_id = ?
-    `).all(siteId, req.user.userId);
+    `);
+    const workers = stmt.all([siteId, req.user.userId]);
     res.json(workers);
   } catch (error) {
     console.error('Get site workers error:', error);
@@ -566,7 +630,7 @@ app.use((err, req, res, next) => {
 // Start server with better error handling
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📊 Database: ${path.join(process.cwd(), 'database.db')}`);
+  console.log(`📊 Database: ${dbPath}`);
   console.log(`🌐 Server accessible from network on port ${PORT}`);
 });
 
@@ -584,6 +648,7 @@ process.on('SIGTERM', () => {
   server.close(() => {
     console.log('✅ Server closed');
     if (db) {
+      saveDatabase();
       db.close();
       console.log('✅ Database closed');
     }
@@ -596,6 +661,7 @@ process.on('SIGINT', () => {
   server.close(() => {
     console.log('✅ Server closed');
     if (db) {
+      saveDatabase();
       db.close();
       console.log('✅ Database closed');
     }
