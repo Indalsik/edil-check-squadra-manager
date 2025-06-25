@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { database } from '@/lib/database'
+import { authAPI } from '@/lib/api'
 
 interface User {
-  id: string
+  id: number
   email: string
 }
 
@@ -29,63 +29,72 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const initAuth = async () => {
+    // Check for existing token
+    const token = localStorage.getItem('edilcheck_token')
+    const savedUser = localStorage.getItem('edilcheck_user')
+    
+    if (token && savedUser) {
       try {
-        await database.init()
-        const currentUser = database.getCurrentUser()
-        if (currentUser) {
-          setUser(currentUser)
-        }
+        setUser(JSON.parse(savedUser))
       } catch (error) {
-        console.error('Error initializing auth:', error)
-      } finally {
-        setIsLoading(false)
+        console.error('Error parsing saved user:', error)
+        localStorage.removeItem('edilcheck_token')
+        localStorage.removeItem('edilcheck_user')
       }
     }
-
-    initAuth()
+    
+    setIsLoading(false)
   }, [])
 
   const login = async (email: string, password: string) => {
     try {
-      const result = await database.login(email, password)
-      if (result.success && result.user) {
-        setUser(result.user)
-        return { success: true }
-      }
-      return { success: false, error: result.error }
+      console.log('Attempting login for:', email)
+      const response = await authAPI.login(email, password)
+      console.log('Login response:', response)
+      
+      localStorage.setItem('edilcheck_token', response.token)
+      localStorage.setItem('edilcheck_user', JSON.stringify(response.user))
+      setUser(response.user)
+      
+      return { success: true }
     } catch (error: any) {
       console.error('Login error:', error)
       return { 
         success: false, 
-        error: error.message || 'Errore durante il login' 
+        error: error.response?.data?.error || error.message || 'Errore durante il login' 
       }
     }
   }
 
   const register = async (email: string, password: string) => {
     try {
-      const result = await database.register(email, password)
-      if (result.success && result.user) {
-        setUser(result.user)
-        return { success: true }
-      }
-      return { success: false, error: result.error }
+      console.log('Attempting registration for:', email)
+      const response = await authAPI.register(email, password)
+      console.log('Registration response:', response)
+      
+      localStorage.setItem('edilcheck_token', response.token)
+      localStorage.setItem('edilcheck_user', JSON.stringify(response.user))
+      setUser(response.user)
+      
+      return { success: true }
     } catch (error: any) {
       console.error('Registration error:', error)
       return { 
         success: false, 
-        error: error.message || 'Errore durante la registrazione' 
+        error: error.response?.data?.error || error.message || 'Errore durante la registrazione' 
       }
     }
   }
 
   const logout = async () => {
     try {
-      await database.logout()
-      setUser(null)
+      await authAPI.logout()
     } catch (error) {
       console.error('Logout error:', error)
+    } finally {
+      localStorage.removeItem('edilcheck_token')
+      localStorage.removeItem('edilcheck_user')
+      setUser(null)
     }
   }
 

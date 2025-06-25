@@ -23,7 +23,9 @@ export const LoginPage = () => {
     setError('')
     
     try {
+      console.log('Starting login process...')
       const result = await login(loginData.email, loginData.password)
+      console.log('Login result:', result)
       
       if (result.success) {
         toast.success('Login effettuato con successo!')
@@ -33,7 +35,7 @@ export const LoginPage = () => {
       }
     } catch (error: any) {
       console.error('Login error:', error)
-      const errorMessage = 'Errore durante il login'
+      const errorMessage = 'Errore di connessione. Riprova tra qualche istante.'
       setError(errorMessage)
       toast.error(errorMessage)
     } finally {
@@ -60,7 +62,9 @@ export const LoginPage = () => {
     setIsLoading(true)
     
     try {
+      console.log('Starting registration process...')
       const result = await register(registerData.email, registerData.password)
+      console.log('Registration result:', result)
       
       if (result.success) {
         toast.success('Registrazione completata con successo!')
@@ -70,7 +74,7 @@ export const LoginPage = () => {
       }
     } catch (error: any) {
       console.error('Registration error:', error)
-      const errorMessage = 'Errore durante la registrazione'
+      const errorMessage = 'Errore di connessione. Riprova tra qualche istante.'
       setError(errorMessage)
       toast.error(errorMessage)
     } finally {
@@ -104,7 +108,7 @@ export const LoginPage = () => {
             </CardTitle>
           </div>
           <CardDescription>
-            Sistema di gestione per l'edilizia - Versione Locale
+            Sistema di gestione per l'edilizia - Self Hosted
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -214,7 +218,7 @@ export const LoginPage = () => {
           </Tabs>
           
           <div className="mt-4 text-center text-sm text-gray-600">
-            <p>💾 Dati salvati localmente - Perfetto per self-hosting!</p>
+            <p>🚀 Database SQLite sul server - Accesso multi-dispositivo!</p>
           </div>
         </CardContent>
       </Card>
