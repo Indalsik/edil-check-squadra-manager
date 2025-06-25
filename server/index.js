@@ -43,7 +43,7 @@ app.get('/api/health', (req, res) => {
 // Database setup with better error handling
 let db;
 try {
-  const dbPath = path.join(__dirname, 'database.db');
+  const dbPath = path.join(process.cwd(), 'database.db');
   console.log('📊 Initializing database at:', dbPath);
   db = new Database(dbPath);
   
@@ -566,7 +566,7 @@ app.use((err, req, res, next) => {
 // Start server with better error handling
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📊 Database: ${path.join(__dirname, 'database.db')}`);
+  console.log(`📊 Database: ${path.join(process.cwd(), 'database.db')}`);
   console.log(`🌐 Server accessible from network on port ${PORT}`);
 });
 
