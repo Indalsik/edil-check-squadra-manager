@@ -12,13 +12,19 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-// CORS configuration - MIGLIORATA per essere più permissiva
+// CORS configuration - MIGLIORATA per essere più permissiva in sviluppo
 app.use(cors({
   origin: function (origin, callback) {
+    // In sviluppo, permetti TUTTE le origini
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('🌐 CORS: Allowing all origins in development mode');
+      return callback(null, true);
+    }
+    
     // Permetti richieste senza origin (es. app mobile, Postman)
     if (!origin) return callback(null, true);
     
-    // Lista di origini permesse
+    // Lista di origini permesse per produzione
     const allowedOrigins = [
       'http://localhost:8080',
       'http://127.0.0.1:8080',
@@ -28,7 +34,11 @@ app.use(cors({
       /^https:\/\/.*\.webcontainer-api\.io$/,
       /^https:\/\/.*\.local-credentialless\.webcontainer-api\.io$/,
       /^https:\/\/.*\.stackblitz\.io$/,
-      /^https:\/\/.*\.bolt\.new$/
+      /^https:\/\/.*\.bolt\.new$/,
+      // Permetti indirizzi IP locali
+      /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
+      /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
+      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:\d+$/
     ];
     
     // Controlla se l'origin è permesso
@@ -41,9 +51,10 @@ app.use(cors({
     });
     
     if (isAllowed) {
+      console.log('✅ CORS: Origin allowed:', origin);
       callback(null, true);
     } else {
-      console.log('🚫 CORS blocked origin:', origin);
+      console.log('⚠️ CORS: Origin not in whitelist but allowing anyway in development:', origin);
       callback(null, true); // Per sviluppo, permetti comunque
     }
   },
@@ -235,7 +246,8 @@ app.get('/health', (req, res) => {
     service: 'Edil-Check Database Server',
     timestamp: new Date().toISOString(),
     cors: 'enabled',
-    auth: 'simple-credentials'
+    auth: 'simple-credentials',
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -650,6 +662,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`📊 Database file: ${dbPath}`);
   console.log(`🔐 Authentication: Simple credentials (email/password in headers)`);
   console.log(`🌐 CORS enabled for all origins (development mode)`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 server.on('error', (error) => {
