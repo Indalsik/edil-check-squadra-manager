@@ -42,17 +42,21 @@ export const LoginPage = () => {
     setIsLoading(true)
     setLastError(null)
     
+    console.log('🔐 Login attempt:', { email: loginData.email, mode })
+    
     try {
       const result = await login(loginData.email, loginData.password)
       if (result.success) {
         toast.success('Login effettuato con successo!')
       } else {
         const errorMessage = result.error || 'Credenziali non valide'
+        console.error('❌ Login failed:', errorMessage)
         setLastError({ type: 'login', message: errorMessage })
         toast.error(errorMessage)
       }
-    } catch (error) {
-      const errorMessage = 'Errore durante il login'
+    } catch (error: any) {
+      const errorMessage = error.message || 'Errore durante il login'
+      console.error('❌ Login error:', error)
       setLastError({ type: 'login', message: errorMessage })
       toast.error(errorMessage)
     } finally {
@@ -80,12 +84,15 @@ export const LoginPage = () => {
 
     setIsLoading(true)
     
+    console.log('📝 Registration attempt:', { email: registerData.email, mode })
+    
     try {
       const result = await register(registerData.email, registerData.password)
       if (result.success) {
         toast.success('Registrazione completata con successo!')
       } else {
         const errorMessage = result.error || 'Errore durante la registrazione'
+        console.error('❌ Registration failed:', errorMessage)
         setLastError({ type: 'register', message: errorMessage })
         toast.error(errorMessage)
         
@@ -99,8 +106,9 @@ export const LoginPage = () => {
           }, 2000)
         }
       }
-    } catch (error) {
-      const errorMessage = 'Errore durante la registrazione'
+    } catch (error: any) {
+      const errorMessage = error.message || 'Errore durante la registrazione'
+      console.error('❌ Registration error:', error)
       setLastError({ type: 'register', message: errorMessage })
       toast.error(errorMessage)
     } finally {
@@ -143,6 +151,7 @@ export const LoginPage = () => {
   }
 
   const handleModeChange = (newMode: 'local' | 'remote') => {
+    console.log(`🔄 Switching database mode: ${mode} → ${newMode}`)
     setMode(newMode)
     setLastError(null) // Clear errors when switching modes
     if (newMode === 'remote') {
@@ -155,7 +164,25 @@ export const LoginPage = () => {
     const newConfig = { ...remoteConfig, [field]: value }
     setRemoteConfig(newConfig)
     if (mode === 'remote') {
+      console.log(`🔧 Updating remote config: ${newConfig.host}:${newConfig.port}`)
       setDatabaseRemoteConfig(newConfig.host, newConfig.port)
+    }
+  }
+
+  const testConnection = async () => {
+    try {
+      console.log(`🧪 Testing connection to ${remoteConfig.host}:${remoteConfig.port}`)
+      const response = await fetch(`http://${remoteConfig.host}:${remoteConfig.port}/health`)
+      if (response.ok) {
+        const data = await response.json()
+        console.log('✅ Connection test successful:', data)
+        toast.success('Connessione al server riuscita!')
+      } else {
+        throw new Error(`HTTP ${response.status}`)
+      }
+    } catch (error: any) {
+      console.error('❌ Connection test failed:', error)
+      toast.error(`Impossibile connettersi al server: ${error.message}`)
     }
   }
 
@@ -164,6 +191,7 @@ export const LoginPage = () => {
 
     const isEmailAlreadyExists = lastError.message.includes('già registrata') || lastError.message.includes('already registered')
     const isInvalidCredentials = lastError.message.includes('Credenziali non valide') || lastError.message.includes('Invalid credentials')
+    const isConnectionError = lastError.message.includes('connettersi al server') || lastError.message.includes('Failed to fetch')
 
     return (
       <Alert className="mb-4 border-red-200 bg-red-50">
@@ -181,6 +209,16 @@ export const LoginPage = () => {
                 La password non è corretta per questa email. Verifica di aver inserito la password giusta, 
                 oppure registra un nuovo account con un'email diversa.
               </p>
+            )}
+            {isConnectionError && (
+              <div className="text-sm space-y-1">
+                <p>Problemi di connessione al server remoto. Verifica che:</p>
+                <ul className="list-disc list-inside ml-2">
+                  <li>Il server sia in esecuzione sulla porta {remoteConfig.port}</li>
+                  <li>L'indirizzo {remoteConfig.host} sia corretto</li>
+                  <li>Non ci siano firewall che bloccano la connessione</li>
+                </ul>
+              </div>
             )}
           </div>
         </AlertDescription>
@@ -242,9 +280,19 @@ export const LoginPage = () => {
             </div>
           </div>
           
-          <p className="text-xs text-orange-600">
-            Server: http://{remoteConfig.host}:{remoteConfig.port}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-orange-600">
+              Server: http://{remoteConfig.host}:{remoteConfig.port}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={testConnection}
+              className="text-xs h-7"
+            >
+              Test Connessione
+            </Button>
+          </div>
 
           <Alert className="border-blue-200 bg-blue-50">
             <Info className="h-4 w-4 text-blue-600" />

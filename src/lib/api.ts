@@ -38,18 +38,26 @@ const createApiInstance = () => {
       }
 
       try {
-        console.log(`🌐 API Request: ${config.method || 'GET'} ${url}`, {
-          headers: options.headers,
-          hasToken: !!token,
-          isAuthEndpoint: config.url.includes('/auth/')
-        })
+        console.log(`🌐 API Request: ${config.method || 'GET'} ${url}`)
+        console.log('📋 Request headers:', options.headers)
+        console.log('📦 Request body:', config.data)
 
         const response = await fetch(url, options)
+        
+        console.log(`📡 Response status: ${response.status} ${response.statusText}`)
         
         if (!response.ok) {
           let errorData
           try {
-            errorData = await response.json()
+            const responseText = await response.text()
+            console.log('📄 Raw response:', responseText)
+            
+            // Try to parse as JSON
+            try {
+              errorData = JSON.parse(responseText)
+            } catch {
+              errorData = { error: responseText || `HTTP ${response.status}: ${response.statusText}` }
+            }
           } catch {
             errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
           }
@@ -61,17 +69,32 @@ const createApiInstance = () => {
             console.warn('🔒 Authentication failed, clearing token')
             localStorage.removeItem('edilcheck_token')
             localStorage.removeItem('edilcheck_user')
-            // Don't redirect here, let the auth context handle it
           }
           
-          throw new Error(errorData.error || `HTTP ${response.status}`)
+          throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`)
         }
 
-        const data = await response.json()
+        const responseText = await response.text()
+        console.log('📄 Raw response:', responseText)
+        
+        let data
+        try {
+          data = JSON.parse(responseText)
+        } catch {
+          data = responseText
+        }
+        
         console.log(`✅ API Success: ${config.method || 'GET'} ${url}`, data)
         return { data }
       } catch (error: any) {
-        console.error(`❌ API Request failed: ${config.method || 'GET'} ${url}`, error.message)
+        console.error(`❌ API Request failed: ${config.method || 'GET'} ${url}`)
+        console.error('🔍 Error details:', error)
+        
+        // Check if it's a network error
+        if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+          throw new Error(`Impossibile connettersi al server ${baseURL}. Verifica che il server sia in esecuzione.`)
+        }
+        
         throw error
       }
     },
@@ -90,11 +113,13 @@ const api = createApiInstance()
 // Auth API
 export const authAPI = {
   login: async (email: string, password: string) => {
+    console.log('🔐 Attempting login for:', email)
     const response = await api.post('/auth/login', { email, password })
     return response.data
   },
   
   register: async (email: string, password: string) => {
+    console.log('📝 Attempting registration for:', email)
     const response = await api.post('/auth/register', { email, password })
     return response.data
   },
