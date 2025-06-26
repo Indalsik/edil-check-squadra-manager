@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
@@ -9,25 +8,24 @@ import { TimeTracking } from "@/components/TimeTracking"
 import { PaymentsManagement } from "@/components/PaymentsManagement"
 import { SitesManagement } from "@/components/SitesManagement"
 import { ArchiveManagement } from "@/components/ArchiveManagement"
-import { DatabaseConnectionDialog } from "@/components/DatabaseConnectionDialog"
+import { DatabaseSyncDialog } from "@/components/DatabaseSyncDialog"
 import { useAuth } from "@/contexts/AuthContext"
 import { useDatabase } from "@/contexts/DatabaseContext"
 import { useTheme } from "@/contexts/ThemeContext"
-import { LogOut, Moon, Sun, User, Database, AlertCircle } from "lucide-react"
+import { LogOut, Moon, Sun, User, Database, AlertCircle, RefreshCw, ArrowUpDown } from "lucide-react"
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard")
   const [isInitialized, setIsInitialized] = useState(false)
   const [showDatabaseDialog, setShowDatabaseDialog] = useState(false)
   const { user, logout } = useAuth()
-  const { mode, isConnected, connectionError } = useDatabase()
+  const { mode, isConnected, connectionError, syncStatus, syncDatabase } = useDatabase()
   const { theme, toggleTheme } = useTheme()
 
   useEffect(() => {
     const initDatabase = async () => {
-      if (user && isConnected) {
+      if (user) {
         try {
-          // Database initialization is handled in DatabaseContext
           setIsInitialized(true)
         } catch (error) {
           console.error('Failed to initialize database:', error)
@@ -37,7 +35,17 @@ const Index = () => {
     }
 
     initDatabase()
-  }, [user, isConnected])
+  }, [user])
+
+  const handleQuickSync = async () => {
+    if (mode === 'remote' && isConnected) {
+      try {
+        await syncDatabase()
+      } catch (error) {
+        console.error('Quick sync failed:', error)
+      }
+    }
+  }
 
   if (!isInitialized) {
     return (
@@ -83,6 +91,23 @@ const Index = () => {
     }
   }
 
+  const getSyncStatusColor = () => {
+    switch (syncStatus.status) {
+      case 'success': return 'text-green-600'
+      case 'syncing': return 'text-blue-600'
+      case 'error': return 'text-red-600'
+      default: return 'text-gray-600'
+    }
+  }
+
+  const getSyncStatusIcon = () => {
+    switch (syncStatus.status) {
+      case 'syncing': return <RefreshCw className="h-3 w-3 animate-spin" />
+      case 'error': return <AlertCircle className="h-3 w-3" />
+      default: return <ArrowUpDown className="h-3 w-3" />
+    }
+  }
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
@@ -100,16 +125,32 @@ const Index = () => {
               >
                 <Database className="h-4 w-4 mr-2" />
                 <span className="text-sm">
-                  {mode === 'local' ? 'Locale' : 'Remoto'}
+                  {mode === 'local' ? 'Locale' : 'Ibrido'}
                 </span>
                 <div className={`w-2 h-2 rounded-full ml-2 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
               </Button>
 
+              {/* Quick Sync Button */}
+              {mode === 'remote' && isConnected && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleQuickSync}
+                  disabled={syncStatus.status === 'syncing'}
+                  className="bg-white dark:bg-gray-800"
+                >
+                  <div className={`flex items-center gap-1 ${getSyncStatusColor()}`}>
+                    {getSyncStatusIcon()}
+                    <span className="text-xs">Sync</span>
+                  </div>
+                </Button>
+              )}
+
               {/* Connection Warning */}
-              {connectionError && connectionError.includes('Using local database') && (
+              {connectionError && mode === 'remote' && (
                 <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">
                   <AlertCircle className="h-3 w-3" />
-                  <span>Fallback locale</span>
+                  <span>Solo locale</span>
                 </div>
               )}
               
@@ -141,7 +182,7 @@ const Index = () => {
         </main>
       </div>
 
-      <DatabaseConnectionDialog 
+      <DatabaseSyncDialog 
         open={showDatabaseDialog} 
         onOpenChange={setShowDatabaseDialog} 
       />
