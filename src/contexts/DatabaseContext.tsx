@@ -146,36 +146,30 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
-  // Backup manuale verso server
+  // Backup manuale verso server - SENZA controllo autenticazione
   const backupToRemote = async (): Promise<SyncResult> => {
-    const currentUser = user || { email: 'anonymous' }
-    
-    if (!currentUser.email || currentUser.email === 'anonymous') {
-      throw new Error('Utente non autenticato per il backup. Effettua il login prima.')
-    }
-    
     if (!isRemoteAvailable) {
       throw new Error('Server backup non disponibile')
     }
     
-    console.log('💾 Starting backup to server for user:', currentUser.email)
-    return await databaseSync.backupToRemote(currentUser.email)
+    // Usa l'email dell'utente corrente o 'anonymous' se non disponibile
+    const userEmail = user?.email || 'anonymous'
+    
+    console.log('💾 Starting backup to server for user:', userEmail)
+    return await databaseSync.backupToRemote(userEmail)
   }
 
-  // Ripristino da server
+  // Ripristino da server - SENZA controllo autenticazione
   const restoreFromRemote = async (): Promise<SyncResult> => {
-    const currentUser = user || { email: 'anonymous' }
-    
-    if (!currentUser.email || currentUser.email === 'anonymous') {
-      throw new Error('Utente non autenticato per il ripristino. Effettua il login prima.')
-    }
-    
     if (!isRemoteAvailable) {
       throw new Error('Server backup non disponibile')
     }
     
-    console.log('📥 Starting restore from server for user:', currentUser.email)
-    return await databaseSync.restoreFromRemote(currentUser.email)
+    // Usa l'email dell'utente corrente o 'anonymous' se non disponibile
+    const userEmail = user?.email || 'anonymous'
+    
+    console.log('📥 Starting restore from server for user:', userEmail)
+    return await databaseSync.restoreFromRemote(userEmail)
   }
 
   // Inizializza all'avvio
