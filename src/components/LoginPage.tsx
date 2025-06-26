@@ -36,14 +36,6 @@ export const LoginPage = () => {
     try {
       const result = await login(loginData.email, loginData.password)
       if (result.success) {
-        // Salva le credenziali per il backup remoto se necessario
-        if (mode === 'local-with-backup') {
-          localStorage.setItem('edilcheck_credentials', JSON.stringify({ 
-            email: loginData.email, 
-            password: loginData.password 
-          }))
-          console.log('🔑 Credentials saved for remote backup')
-        }
         toast.success('Login effettuato con successo!')
       } else {
         const errorMessage = result.error || 'Credenziali non valide'
@@ -82,14 +74,6 @@ export const LoginPage = () => {
     try {
       const result = await register(registerData.email, registerData.password)
       if (result.success) {
-        // Salva le credenziali per il backup remoto se necessario
-        if (mode === 'local-with-backup') {
-          localStorage.setItem('edilcheck_credentials', JSON.stringify({ 
-            email: registerData.email, 
-            password: registerData.password 
-          }))
-          console.log('🔑 Credentials saved for remote backup')
-        }
         toast.success('Registrazione completata con successo!')
       } else {
         const errorMessage = result.error || 'Errore durante la registrazione'
@@ -132,9 +116,9 @@ export const LoginPage = () => {
   const handleTestConnection = async () => {
     const connected = await testRemoteConnection()
     if (connected) {
-      toast.success('Connessione al server riuscita!')
+      toast.success('Server backup raggiungibile!')
     } else {
-      toast.error('Impossibile connettersi al server')
+      toast.error('Server backup non raggiungibile')
     }
   }
 
@@ -328,7 +312,7 @@ export const LoginPage = () => {
                 <SelectItem value="remote">
                   <div className="flex items-center gap-2">
                     <Server className="h-4 w-4 text-orange-600" />
-                    <span>Locale + Backup Remoto</span>
+                    <span>Locale + Backup Server</span>
                   </div>
                 </SelectItem>
               </SelectContent>
@@ -338,7 +322,7 @@ export const LoginPage = () => {
               <div className="space-y-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
                 <div className="flex items-center gap-2 text-orange-800">
                   <Settings className="h-4 w-4" />
-                  <span className="text-sm font-medium">Server Backup (Porta 3002)</span>
+                  <span className="text-sm font-medium">Server Backup</span>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-2">
@@ -393,11 +377,11 @@ export const LoginPage = () => {
                 )}
 
                 <div className="text-xs text-orange-700 bg-orange-100 p-2 rounded">
-                  <strong>📍 Server di Backup</strong><br />
+                  <strong>💾 Server di Backup Semplificato</strong><br />
                   • L'autenticazione avviene sempre localmente nel browser<br />
-                  • Il server remoto serve solo per backup e restore dei dati<br />
-                  • Le credenziali vengono salvate per sincronizzare i dati quando necessario<br />
-                  • Il server deve essere avviato separatamente con: <code>cd database-server && npm start</code>
+                  • Il server backup salva/carica i dati come file JSON<br />
+                  • Non servono credenziali complesse - solo copia fisica dei dati<br />
+                  • Avvia il server con: <code>cd database-server && npm start</code>
                 </div>
               </div>
             )}

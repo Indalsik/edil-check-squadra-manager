@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { localDatabase } from '@/lib/local-database'
-import { RemoteDatabase, RemoteConfig } from '@/lib/remote-database'
 import { databaseSync, SyncStatus, SyncResult } from '@/lib/database-sync'
 import { useAuth } from './AuthContext'
 
@@ -97,7 +96,6 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   
   const [isRemoteAvailable, setIsRemoteAvailable] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
-  const [remoteDatabase, setRemoteDatabase] = useState<RemoteDatabase | null>(null)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(databaseSync.getStatus())
   const [isConnected, setIsConnected] = useState(false)
 
@@ -107,32 +105,28 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     setMode(newMode)
     localStorage.setItem('edilcheck_database_mode', newMode)
     
-    if (newMode === 'local-with-backup' && !remoteDatabase) {
-      // Inizializza database remoto se necessario
-      const newRemoteDb = new RemoteDatabase(remoteConfig)
-      setRemoteDatabase(newRemoteDb)
-      databaseSync.setRemoteDatabase(newRemoteDb)
+    if (newMode === 'local-with-backup') {
+      // Configura server backup
+      databaseSync.setRemoteConfig(remoteConfig)
       testRemoteConnection()
     }
   }
 
   // Aggiorna configurazione remota
   const setRemoteConfig = (host: string, port: string) => {
-    console.log(`🔧 Updating remote config: ${host}:${port}`)
+    console.log(`🔧 Updating backup server config: ${host}:${port}`)
     const newConfig = { host, port }
     setRemoteConfigState(newConfig)
     localStorage.setItem('edilcheck_remote_config', JSON.stringify(newConfig))
     
-    // Ricrea il client remoto se in modalità backup
+    // Riconfigura il sistema di backup se in modalità backup
     if (mode === 'local-with-backup') {
-      const newRemoteDb = new RemoteDatabase(newConfig)
-      setRemoteDatabase(newRemoteDb)
-      databaseSync.setRemoteDatabase(newRemoteDb)
+      databaseSync.setRemoteConfig(newConfig)
       testRemoteConnection()
     }
   }
 
-  // Test connessione remota (solo per backup)
+  // Test connessione server backup
   const testRemoteConnection = async (): Promise<boolean> => {
     if (mode === 'local-only') {
       setIsRemoteAvailable(false)
@@ -140,25 +134,19 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       return false
     }
 
-    if (!remoteDatabase) {
-      setIsRemoteAvailable(false)
-      setConnectionError('Database remoto non configurato')
-      return false
-    }
-
     try {
       const connected = await databaseSync.testConnection()
       setIsRemoteAvailable(connected)
-      setConnectionError(connected ? null : 'Server remoto non raggiungibile')
+      setConnectionError(connected ? null : 'Server backup non raggiungibile')
       return connected
     } catch (error: any) {
       setIsRemoteAvailable(false)
-      setConnectionError(`Errore connessione: ${error.message}`)
+      setConnectionError(`Errore server backup: ${error.message}`)
       return false
     }
   }
 
-  // Backup manuale verso remoto
+  // Backup manuale verso server
   const backupToRemote = async (): Promise<SyncResult> => {
     const currentUser = user || { email: 'anonymous' }
     
@@ -167,14 +155,14 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     }
     
     if (!isRemoteAvailable) {
-      throw new Error('Server remoto non disponibile')
+      throw new Error('Server backup non disponibile')
     }
     
-    console.log('💾 Starting backup to remote for user:', currentUser.email)
+    console.log('💾 Starting backup to server for user:', currentUser.email)
     return await databaseSync.backupToRemote(currentUser.email)
   }
 
-  // Ripristino da remoto
+  // Ripristino da server
   const restoreFromRemote = async (): Promise<SyncResult> => {
     const currentUser = user || { email: 'anonymous' }
     
@@ -183,10 +171,10 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     }
     
     if (!isRemoteAvailable) {
-      throw new Error('Server remoto non disponibile')
+      throw new Error('Server backup non disponibile')
     }
     
-    console.log('📥 Starting restore from remote for user:', currentUser.email)
+    console.log('📥 Starting restore from server for user:', currentUser.email)
     return await databaseSync.restoreFromRemote(currentUser.email)
   }
 
@@ -202,31 +190,25 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       setConnectionError('Using local database')
       
       if (mode === 'local-with-backup') {
-        // Configura database remoto per backup (in background, non bloccante)
-        const newRemoteDb = new RemoteDatabase(remoteConfig)
-        setRemoteDatabase(newRemoteDb)
-        databaseSync.setRemoteDatabase(newRemoteDb)
+        // Configura server backup (in background, non bloccante)
+        databaseSync.setRemoteConfig(remoteConfig)
         
         // Test connessione in background (non bloccante)
         setTimeout(async () => {
           try {
-            const connected = await newRemoteDb.testConnection()
+            const connected = await databaseSync.testConnection()
             setIsRemoteAvailable(connected)
-            setConnectionError(connected ? null : 'Server remoto non disponibile per backup')
+            setConnectionError(connected ? null : 'Server backup non disponibile')
             
-            // Se connesso e utente autenticato, configura credenziali
-            if (connected && user?.email) {
-              const credentials = localStorage.getItem('edilcheck_credentials')
-              if (credentials) {
-                const { email, password } = JSON.parse(credentials)
-                newRemoteDb.setCredentials(email, password)
-                console.log('🔑 Remote credentials configured for backup')
-              }
+            if (connected) {
+              console.log('✅ Backup server available')
+            } else {
+              console.log('⚠️ Backup server not available')
             }
           } catch (error: any) {
             setIsRemoteAvailable(false)
-            setConnectionError('Server remoto non disponibile per backup')
-            console.log('⚠️ Remote backup server not available')
+            setConnectionError('Server backup non disponibile')
+            console.log('⚠️ Backup server not available:', error.message)
           }
         }, 100) // Molto veloce, non bloccante
       } else {
@@ -244,22 +226,6 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribe = databaseSync.onStatusChange(setSyncStatus)
     return unsubscribe
   }, [])
-
-  // Aggiorna credenziali remote quando l'utente cambia
-  useEffect(() => {
-    if (mode === 'local-with-backup' && remoteDatabase && user) {
-      const credentials = localStorage.getItem('edilcheck_credentials')
-      if (credentials) {
-        try {
-          const { email, password } = JSON.parse(credentials)
-          remoteDatabase.setCredentials(email, password)
-          console.log('🔑 Remote backup credentials updated for user:', email)
-        } catch (error) {
-          console.error('Error setting remote backup credentials:', error)
-        }
-      }
-    }
-  }, [mode, remoteDatabase, user])
 
   // TUTTE le operazioni database sono SEMPRE locali
   const userEmail = user?.email || 'anonymous'
@@ -321,7 +287,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const updatePayment = async (id: number, payment: any) => {
-    return localDatabase.updatePayment(userEmail, payment)
+    return localDatabase.updatePayment(userEmail, id, payment)
   }
 
   const deletePayment = async (id: number) => {

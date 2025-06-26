@@ -1,6 +1,5 @@
-// Sistema di backup e sincronizzazione per database local-first
+// Sistema di backup semplificato - copia diretta dei dati senza autenticazione
 import { localDatabase } from './local-database'
-import { RemoteDatabase } from './remote-database'
 
 export interface SyncStatus {
   isRemoteAvailable: boolean
@@ -20,8 +19,13 @@ export interface SyncResult {
   operation: 'backup' | 'restore'
 }
 
+interface RemoteConfig {
+  host: string
+  port: string
+}
+
 class DatabaseSync {
-  private remoteDb: RemoteDatabase | null = null
+  private remoteConfig: RemoteConfig = { host: 'localhost', port: '3002' }
   private syncStatus: SyncStatus = {
     isRemoteAvailable: false,
     lastBackup: null,
@@ -40,30 +44,69 @@ class DatabaseSync {
     if (lastRestore) this.syncStatus.lastRestore = lastRestore
   }
 
-  // Configura database remoto per backup
-  setRemoteDatabase(remoteDb: RemoteDatabase): void {
-    this.remoteDb = remoteDb
+  // Configura server remoto
+  setRemoteConfig(config: RemoteConfig): void {
+    this.remoteConfig = config
     this.testConnection()
+  }
+
+  private getBaseUrl(): string {
+    return `http://${this.remoteConfig.host}:${this.remoteConfig.port}`
+  }
+
+  private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
+    const url = `${this.getBaseUrl()}${endpoint}`
+    
+    try {
+      console.log(`🌐 Backup API: ${options.method || 'GET'} ${url}`)
+      
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        },
+        mode: 'cors'
+      })
+
+      console.log(`📡 Response: ${response.status} ${response.statusText}`)
+
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}`
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorData.message || errorMessage
+        } catch {
+          errorMessage = response.statusText || errorMessage
+        }
+        throw new Error(errorMessage)
+      }
+
+      const data = await response.json()
+      console.log('✅ Backup API success')
+      return data
+    } catch (error: any) {
+      console.error('❌ Backup API error:', error)
+      if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+        throw new Error(`Server backup non raggiungibile su ${this.remoteConfig.host}:${this.remoteConfig.port}`)
+      }
+      throw error
+    }
   }
 
   // Test connessione remota
   async testConnection(): Promise<boolean> {
-    if (!this.remoteDb) {
-      this.updateStatus({ isRemoteAvailable: false, error: 'Database remoto non configurato' })
-      return false
-    }
-
     try {
-      const connected = await this.remoteDb.testConnection()
-      this.updateStatus({ 
-        isRemoteAvailable: connected,
-        error: connected ? undefined : 'Server remoto non raggiungibile'
-      })
-      return connected
+      console.log('🔍 Testing backup server connection:', this.getBaseUrl())
+      const response = await this.request('/health')
+      console.log('✅ Backup server connection successful:', response)
+      this.updateStatus({ isRemoteAvailable: true, error: undefined })
+      return true
     } catch (error: any) {
+      console.error('❌ Backup server connection failed:', error)
       this.updateStatus({ 
         isRemoteAvailable: false, 
-        error: `Errore connessione: ${error.message}` 
+        error: `Server backup non disponibile: ${error.message}` 
       })
       return false
     }
@@ -91,140 +134,61 @@ class DatabaseSync {
     return { ...this.syncStatus }
   }
 
-  // Configura credenziali per il backup
-  private ensureCredentials(): boolean {
-    if (!this.remoteDb) {
-      throw new Error('Database remoto non configurato')
-    }
-
-    // Prova a ottenere le credenziali dal localStorage
-    const credentials = localStorage.getItem('edilcheck_credentials')
-    if (credentials) {
-      try {
-        const { email, password } = JSON.parse(credentials)
-        console.log('🔑 Setting backup credentials for:', email)
-        this.remoteDb.setCredentials(email, password)
-        return true
-      } catch (error) {
-        console.error('❌ Error parsing credentials:', error)
-        throw new Error('Credenziali non valide nel localStorage')
-      }
-    }
-
-    throw new Error('Credenziali non trovate. Effettua il login prima di fare il backup.')
-  }
-
-  // BACKUP: Copia tutti i dati locali sul server remoto
+  // BACKUP: Invia tutti i dati locali al server per il backup
   async backupToRemote(userEmail: string): Promise<SyncResult> {
-    if (!this.remoteDb || !this.syncStatus.isRemoteAvailable) {
-      throw new Error('Server remoto non disponibile per backup')
-    }
-
-    // Assicurati che le credenziali siano configurate
-    try {
-      this.ensureCredentials()
-    } catch (error: any) {
-      throw new Error(`Autenticazione fallita: ${error.message}`)
+    if (!this.syncStatus.isRemoteAvailable) {
+      throw new Error('Server backup non disponibile')
     }
 
     this.updateStatus({ status: 'backing-up', error: undefined })
 
     try {
-      console.log('💾 Starting backup to remote server for user:', userEmail)
+      console.log('💾 Starting backup to server for user:', userEmail)
       
-      let itemsProcessed = 0
-      let conflicts = 0
-
-      // Backup Workers
-      console.log('💾 Backing up workers...')
+      // Raccogli tutti i dati locali
       const workers = localDatabase.getWorkers(userEmail)
-      for (const worker of workers) {
-        try {
-          await this.remoteDb.addWorker(worker)
-          itemsProcessed++
-          console.log(`💾 Backed up worker: ${worker.name}`)
-        } catch (error: any) {
-          if (error.message.includes('già esiste') || error.message.includes('duplicate') || error.message.includes('UNIQUE constraint')) {
-            // Worker già esistente, prova aggiornamento
-            try {
-              const remoteWorkers = await this.remoteDb.getWorkers()
-              const existing = remoteWorkers.find(w => w.email === worker.email)
-              if (existing && existing.id) {
-                await this.remoteDb.updateWorker(existing.id, worker)
-                itemsProcessed++
-                console.log(`💾 Updated worker on remote: ${worker.name}`)
-              }
-            } catch (updateError) {
-              conflicts++
-              console.warn(`⚠️ Conflict backing up worker: ${worker.name}`, updateError)
-            }
-          } else {
-            conflicts++
-            console.error(`❌ Failed to backup worker: ${worker.name}`, error)
-          }
-        }
-      }
-
-      // Backup Sites
-      console.log('💾 Backing up sites...')
       const sites = localDatabase.getSites(userEmail)
-      for (const site of sites) {
-        try {
-          await this.remoteDb.addSite(site)
-          itemsProcessed++
-          console.log(`💾 Backed up site: ${site.name}`)
-        } catch (error: any) {
-          if (error.message.includes('già esiste') || error.message.includes('duplicate') || error.message.includes('UNIQUE constraint')) {
-            try {
-              const remoteSites = await this.remoteDb.getSites()
-              const existing = remoteSites.find(s => s.name === site.name && s.address === site.address)
-              if (existing && existing.id) {
-                await this.remoteDb.updateSite(existing.id, site)
-                itemsProcessed++
-                console.log(`💾 Updated site on remote: ${site.name}`)
-              }
-            } catch (updateError) {
-              conflicts++
-              console.warn(`⚠️ Conflict backing up site: ${site.name}`, updateError)
-            }
-          } else {
-            conflicts++
-            console.error(`❌ Failed to backup site: ${site.name}`, error)
-          }
-        }
-      }
-
-      // Backup Time Entries
-      console.log('💾 Backing up time entries...')
       const timeEntries = localDatabase.getTimeEntries(userEmail)
-      for (const entry of timeEntries) {
-        try {
-          // Rimuovi i campi calcolati prima del backup
-          const { workerName, siteName, ...entryData } = entry
-          await this.remoteDb.addTimeEntry(entryData)
-          itemsProcessed++
-          console.log(`💾 Backed up time entry: ${entry.date}`)
-        } catch (error: any) {
-          conflicts++
-          console.warn(`⚠️ Conflict backing up time entry: ${entry.date}`, error)
+      const payments = localDatabase.getPayments(userEmail)
+
+      // Prepara il payload del backup
+      const backupData = {
+        userEmail,
+        timestamp: new Date().toISOString(),
+        data: {
+          workers: workers.map(w => {
+            const { id, ...workerData } = w
+            return workerData
+          }),
+          sites: sites.map(s => {
+            const { id, ...siteData } = s
+            return siteData
+          }),
+          timeEntries: timeEntries.map(te => {
+            const { id, workerName, siteName, ...entryData } = te
+            return entryData
+          }),
+          payments: payments.map(p => {
+            const { id, workerName, ...paymentData } = p
+            return paymentData
+          })
         }
       }
 
-      // Backup Payments
-      console.log('💾 Backing up payments...')
-      const payments = localDatabase.getPayments(userEmail)
-      for (const payment of payments) {
-        try {
-          // Rimuovi i campi calcolati prima del backup
-          const { workerName, ...paymentData } = payment
-          await this.remoteDb.addPayment(paymentData)
-          itemsProcessed++
-          console.log(`💾 Backed up payment: ${payment.week}`)
-        } catch (error: any) {
-          conflicts++
-          console.warn(`⚠️ Conflict backing up payment: ${payment.week}`, error)
-        }
-      }
+      console.log('💾 Backup data prepared:', {
+        workers: backupData.data.workers.length,
+        sites: backupData.data.sites.length,
+        timeEntries: backupData.data.timeEntries.length,
+        payments: backupData.data.payments.length
+      })
+
+      // Invia il backup al server
+      await this.request('/backup', {
+        method: 'POST',
+        body: JSON.stringify(backupData)
+      })
+
+      const totalItems = workers.length + sites.length + timeEntries.length + payments.length
 
       // Aggiorna timestamp backup
       const now = new Date().toISOString()
@@ -233,14 +197,14 @@ class DatabaseSync {
       this.updateStatus({ 
         status: 'success',
         lastBackup: now,
-        localCount: workers.length + sites.length + timeEntries.length + payments.length
+        localCount: totalItems
       })
 
       console.log('✅ Backup completed successfully')
       return {
         success: true,
-        itemsProcessed,
-        conflicts,
+        itemsProcessed: totalItems,
+        conflicts: 0,
         operation: 'backup'
       }
 
@@ -260,105 +224,87 @@ class DatabaseSync {
     }
   }
 
-  // RESTORE: Scarica tutti i dati dal server remoto e li mette nel database locale
+  // RESTORE: Scarica i dati dal server e li ripristina localmente
   async restoreFromRemote(userEmail: string): Promise<SyncResult> {
-    if (!this.remoteDb || !this.syncStatus.isRemoteAvailable) {
-      throw new Error('Server remoto non disponibile per ripristino')
-    }
-
-    // Assicurati che le credenziali siano configurate
-    try {
-      this.ensureCredentials()
-    } catch (error: any) {
-      throw new Error(`Autenticazione fallita: ${error.message}`)
+    if (!this.syncStatus.isRemoteAvailable) {
+      throw new Error('Server backup non disponibile')
     }
 
     this.updateStatus({ status: 'restoring', error: undefined })
 
     try {
-      console.log('📥 Starting restore from remote server for user:', userEmail)
+      console.log('📥 Starting restore from server for user:', userEmail)
       
+      // Richiedi i dati dal server
+      const backupData = await this.request(`/restore/${encodeURIComponent(userEmail)}`)
+
+      if (!backupData || !backupData.data) {
+        throw new Error('Nessun backup trovato per questo utente')
+      }
+
+      console.log('📥 Backup data received:', {
+        workers: backupData.data.workers?.length || 0,
+        sites: backupData.data.sites?.length || 0,
+        timeEntries: backupData.data.timeEntries?.length || 0,
+        payments: backupData.data.payments?.length || 0
+      })
+
       let itemsProcessed = 0
       let conflicts = 0
 
-      // Restore Workers
-      console.log('📥 Restoring workers...')
-      const remoteWorkers = await this.remoteDb.getWorkers()
-      for (const worker of remoteWorkers) {
-        try {
-          localDatabase.addWorker(userEmail, worker)
-          itemsProcessed++
-          console.log(`📥 Restored worker: ${worker.name}`)
-        } catch (error: any) {
-          // Worker già esistente, prova aggiornamento
+      // Pulisci i dati locali esistenti (opzionale - potresti voler fare un merge)
+      console.log('🗑️ Clearing existing local data...')
+      localDatabase.clearUserData(userEmail)
+
+      // Ripristina Workers
+      if (backupData.data.workers) {
+        for (const worker of backupData.data.workers) {
           try {
-            const localWorkers = localDatabase.getWorkers(userEmail)
-            const existing = localWorkers.find(w => w.email === worker.email)
-            if (existing && existing.id) {
-              localDatabase.updateWorker(userEmail, existing.id, worker)
-              itemsProcessed++
-              console.log(`📥 Updated local worker: ${worker.name}`)
-            }
-          } catch (updateError) {
+            localDatabase.addWorker(userEmail, worker)
+            itemsProcessed++
+          } catch (error) {
             conflicts++
-            console.warn(`⚠️ Conflict restoring worker: ${worker.name}`, updateError)
+            console.warn('⚠️ Conflict restoring worker:', worker.name, error)
           }
         }
       }
 
-      // Restore Sites
-      console.log('📥 Restoring sites...')
-      const remoteSites = await this.remoteDb.getSites()
-      for (const site of remoteSites) {
-        try {
-          localDatabase.addSite(userEmail, site)
-          itemsProcessed++
-          console.log(`📥 Restored site: ${site.name}`)
-        } catch (error: any) {
+      // Ripristina Sites
+      if (backupData.data.sites) {
+        for (const site of backupData.data.sites) {
           try {
-            const localSites = localDatabase.getSites(userEmail)
-            const existing = localSites.find(s => s.name === site.name && s.address === site.address)
-            if (existing && existing.id) {
-              localDatabase.updateSite(userEmail, existing.id, site)
-              itemsProcessed++
-              console.log(`📥 Updated local site: ${site.name}`)
-            }
-          } catch (updateError) {
+            localDatabase.addSite(userEmail, site)
+            itemsProcessed++
+          } catch (error) {
             conflicts++
-            console.warn(`⚠️ Conflict restoring site: ${site.name}`, updateError)
+            console.warn('⚠️ Conflict restoring site:', site.name, error)
           }
         }
       }
 
-      // Restore Time Entries
-      console.log('📥 Restoring time entries...')
-      const remoteTimeEntries = await this.remoteDb.getTimeEntries()
-      for (const entry of remoteTimeEntries) {
-        try {
-          // Rimuovi i campi calcolati prima del restore
-          const { workerName, siteName, ...entryData } = entry
-          localDatabase.addTimeEntry(userEmail, entryData)
-          itemsProcessed++
-          console.log(`📥 Restored time entry: ${entry.date}`)
-        } catch (error: any) {
-          conflicts++
-          console.warn(`⚠️ Conflict restoring time entry: ${entry.date}`, error)
+      // Ripristina Time Entries
+      if (backupData.data.timeEntries) {
+        for (const entry of backupData.data.timeEntries) {
+          try {
+            localDatabase.addTimeEntry(userEmail, entry)
+            itemsProcessed++
+          } catch (error) {
+            conflicts++
+            console.warn('⚠️ Conflict restoring time entry:', entry.date, error)
+          }
         }
       }
 
-      // Restore Payments
-      console.log('📥 Restoring payments...')
-      const remotePayments = await this.remoteDb.getPayments()
-      for (const payment of remotePayments) {
-        try {
-          // Rimuovi i campi calcolati prima del restore
-          const { workerName, ...paymentData } = payment
-          localDatabase.addPayment(userEmail, paymentData)
-          itemsProcessed++
-          console.log(`📥 Restored payment: ${payment.week}`)
-        } catch (error: any) {
-          conflicts++
-          console.warn(`⚠️ Conflict restoring payment: ${payment.week}`, error)
+      // Ripristina Payments
+      if (backupData.data.payments) {
+        for (const payment of backupData.data.payments) {
+          try {
+            localDatabase.addPayment(userEmail, payment)
+            itemsProcessed++
+          } catch (error) {
+            conflicts++
+            console.warn('⚠️ Conflict restoring payment:', payment.week, error)
+          }
         }
       }
 
@@ -369,7 +315,7 @@ class DatabaseSync {
       this.updateStatus({ 
         status: 'success',
         lastRestore: now,
-        remoteCount: remoteWorkers.length + remoteSites.length + remoteTimeEntries.length + remotePayments.length
+        remoteCount: itemsProcessed
       })
 
       console.log('✅ Restore completed successfully')

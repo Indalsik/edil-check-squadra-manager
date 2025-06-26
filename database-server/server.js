@@ -1,7 +1,5 @@
 import express from 'express';
 import cors from 'cors';
-import bcrypt from 'bcryptjs';
-import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -17,7 +15,7 @@ app.use(cors({
   origin: true, // Permetti tutte le origini
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Email', 'X-User-Password'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   exposedHeaders: ['Authorization'],
   maxAge: 86400
 }));
@@ -26,618 +24,196 @@ app.use(cors({
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,PATCH');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Email, X-User-Password');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.sendStatus(200);
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
-// Database setup
-let db;
-const dbPath = path.join(process.cwd(), 'edil-check-database.db');
-
-try {
-  console.log('📊 Initializing Edil-Check Database Server at:', dbPath);
-  
-  const SQL = await initSqlJs();
-  
-  let data;
-  try {
-    data = fs.readFileSync(dbPath);
-    console.log('✅ Existing database file loaded');
-  } catch (err) {
-    console.log('📝 Creating new database file');
-    data = null;
-  }
-  
-  db = new SQL.Database(data);
-  console.log('✅ Database connection successful');
-} catch (error) {
-  console.error('❌ Database initialization failed:', error);
-  process.exit(1);
+// Directory per i backup
+const backupDir = path.join(process.cwd(), 'backups');
+if (!fs.existsSync(backupDir)) {
+  fs.mkdirSync(backupDir, { recursive: true });
+  console.log('📁 Created backups directory:', backupDir);
 }
-
-// Helper function to save database
-const saveDatabase = () => {
-  try {
-    const data = db.export();
-    fs.writeFileSync(dbPath, data);
-  } catch (error) {
-    console.error('❌ Error saving database:', error);
-  }
-};
-
-// Initialize database tables
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      email TEXT UNIQUE NOT NULL,
-      password TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-
-    CREATE TABLE IF NOT EXISTS workers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      role TEXT NOT NULL,
-      phone TEXT NOT NULL,
-      email TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'Attivo',
-      hourly_rate REAL NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS sites (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      owner TEXT NOT NULL,
-      address TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'Attivo',
-      start_date DATE NOT NULL,
-      estimated_end DATE NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS time_entries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      worker_id INTEGER NOT NULL,
-      site_id INTEGER NOT NULL,
-      date DATE NOT NULL,
-      start_time TIME NOT NULL,
-      end_time TIME NOT NULL,
-      total_hours REAL NOT NULL,
-      status TEXT NOT NULL DEFAULT 'Confermato',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
-      FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS payments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      worker_id INTEGER NOT NULL,
-      week TEXT NOT NULL,
-      hours REAL NOT NULL,
-      hourly_rate REAL NOT NULL,
-      total_amount REAL NOT NULL,
-      overtime REAL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'Da Pagare',
-      paid_date DATE,
-      method TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE IF NOT EXISTS site_workers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      site_id INTEGER NOT NULL,
-      worker_id INTEGER NOT NULL,
-      assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE CASCADE,
-      FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
-      UNIQUE(site_id, worker_id)
-    );
-  `);
-  saveDatabase();
-  console.log('✅ Database tables initialized');
-} catch (error) {
-  console.error('❌ Database table creation failed:', error);
-  process.exit(1);
-}
-
-// Auth middleware - usa email e password negli headers
-const authenticateUser = (req, res, next) => {
-  try {
-    const email = req.headers['x-user-email'];
-    const password = req.headers['x-user-password'];
-
-    console.log('🔐 Auth attempt:', { email: email ? 'provided' : 'missing', password: password ? 'provided' : 'missing' });
-
-    if (!email || !password) {
-      console.log('❌ Missing credentials');
-      return res.status(401).json({ error: 'Email e password richiesti negli headers' });
-    }
-
-    // Verifica credenziali
-    const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
-    const user = stmt.get([email]);
-    
-    if (!user) {
-      console.log('❌ User not found:', email);
-      return res.status(401).json({ error: 'Utente non trovato' });
-    }
-
-    // Verifica password
-    const validPassword = bcrypt.compareSync(password, user.password);
-    if (!validPassword) {
-      console.log('❌ Invalid password for:', email);
-      return res.status(401).json({ error: 'Password non valida' });
-    }
-
-    console.log('✅ Authentication successful for:', email);
-    req.user = { userId: user.id, email: user.email };
-    next();
-  } catch (error) {
-    console.error('❌ Auth middleware error:', error);
-    res.status(500).json({ error: 'Errore di autenticazione' });
-  }
-};
 
 // Health check
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
-    service: 'Edil-Check Database Server',
+    service: 'Edil-Check Backup Server',
     timestamp: new Date().toISOString(),
     cors: 'enabled',
-    auth: 'simple-credentials',
+    backupDir: backupDir,
     environment: process.env.NODE_ENV || 'development'
   });
 });
 
-// Auth routes
-app.post('/auth/register', async (req, res) => {
+// Funzione per ottenere il percorso del file di backup
+const getBackupFilePath = (userEmail) => {
+  const safeEmail = userEmail.replace(/[^a-zA-Z0-9@.-]/g, '_');
+  return path.join(backupDir, `backup_${safeEmail}.json`);
+};
+
+// Endpoint per salvare il backup
+app.post('/backup', async (req, res) => {
   try {
-    console.log('📝 Registration attempt:', req.body);
-    const { email, password } = req.body;
+    console.log('💾 Backup request received');
+    const { userEmail, timestamp, data } = req.body;
     
-    if (!email || !password) {
-      console.log('❌ Missing email or password');
-      return res.status(400).json({ error: 'Email e password sono richiesti' });
+    if (!userEmail || !data) {
+      console.log('❌ Missing userEmail or data in backup request');
+      return res.status(400).json({ error: 'userEmail e data sono richiesti' });
     }
     
-    // Controlla se l'utente esiste già
-    const stmt = db.prepare('SELECT id FROM users WHERE email = ?');
-    const existingUser = stmt.get([email]);
-    if (existingUser) {
-      console.log('❌ User already exists:', email);
-      return res.status(400).json({ error: 'Email già registrata' });
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Crea utente
-    const insertStmt = db.prepare('INSERT INTO users (email, password) VALUES (?, ?)');
-    const result = insertStmt.run([email, hashedPassword]);
-    saveDatabase();
-    
-    console.log('✅ User registered successfully:', email);
-    res.json({ 
-      success: true,
-      message: 'Registrazione completata',
-      user: { id: result.lastID, email } 
-    });
-  } catch (error) {
-    console.error('❌ Registration error:', error);
-    res.status(500).json({ error: 'Errore durante la registrazione' });
-  }
-});
-
-app.post('/auth/login', async (req, res) => {
-  try {
-    console.log('🔐 Login attempt:', req.body);
-    const { email, password } = req.body;
-    
-    if (!email || !password) {
-      console.log('❌ Missing email or password');
-      return res.status(400).json({ error: 'Email e password sono richiesti' });
-    }
-    
-    // Trova utente
-    const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
-    const user = stmt.get([email]);
-    
-    if (!user || !user.password) {
-      console.log('❌ User not found or invalid password field:', email);
-      return res.status(400).json({ error: 'Credenziali non valide' });
-    }
-
-    // Verifica password
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      console.log('❌ Invalid password for:', email);
-      return res.status(400).json({ error: 'Credenziali non valide' });
-    }
-
-    console.log('✅ Login successful for:', email);
-    res.json({ 
-      success: true,
-      message: 'Login effettuato',
-      user: { id: user.id, email: user.email } 
-    });
-  } catch (error) {
-    console.error('❌ Login error:', error);
-    res.status(500).json({ error: 'Errore durante il login' });
-  }
-});
-
-app.post('/auth/logout', (req, res) => {
-  res.json({ message: 'Logout effettuato' });
-});
-
-app.get('/auth/me', authenticateUser, (req, res) => {
-  res.json({ user: req.user });
-});
-
-// Workers routes
-app.get('/workers', authenticateUser, (req, res) => {
-  try {
-    const stmt = db.prepare('SELECT * FROM workers WHERE user_id = ? ORDER BY name');
-    const workers = stmt.all([req.user.userId]);
-    res.json(workers);
-  } catch (error) {
-    console.error('Get workers error:', error);
-    res.status(500).json({ error: 'Errore nel recupero operai' });
-  }
-});
-
-app.post('/workers', authenticateUser, (req, res) => {
-  try {
-    const { name, role, phone, email, status, hourlyRate } = req.body;
-    const stmt = db.prepare(`
-      INSERT INTO workers (user_id, name, role, phone, email, status, hourly_rate) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    const result = stmt.run([req.user.userId, name, role, phone, email, status, hourlyRate]);
-    saveDatabase();
-    
-    const getStmt = db.prepare('SELECT * FROM workers WHERE id = ?');
-    const worker = getStmt.get([result.lastID]);
-    res.json(worker);
-  } catch (error) {
-    console.error('Create worker error:', error);
-    res.status(500).json({ error: 'Errore nella creazione operaio' });
-  }
-});
-
-app.put('/workers/:id', authenticateUser, (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, role, phone, email, status, hourlyRate } = req.body;
-    
-    const stmt = db.prepare(`
-      UPDATE workers 
-      SET name = ?, role = ?, phone = ?, email = ?, status = ?, hourly_rate = ?
-      WHERE id = ? AND user_id = ?
-    `);
-    stmt.run([name, role, phone, email, status, hourlyRate, id, req.user.userId]);
-    saveDatabase();
-    
-    const getStmt = db.prepare('SELECT * FROM workers WHERE id = ? AND user_id = ?');
-    const worker = getStmt.get([id, req.user.userId]);
-    res.json(worker);
-  } catch (error) {
-    console.error('Update worker error:', error);
-    res.status(500).json({ error: 'Errore nell\'aggiornamento operaio' });
-  }
-});
-
-app.delete('/workers/:id', authenticateUser, (req, res) => {
-  try {
-    const { id } = req.params;
-    const stmt = db.prepare('DELETE FROM workers WHERE id = ? AND user_id = ?');
-    stmt.run([id, req.user.userId]);
-    saveDatabase();
-    res.json({ message: 'Operaio eliminato' });
-  } catch (error) {
-    console.error('Delete worker error:', error);
-    res.status(500).json({ error: 'Errore nell\'eliminazione operaio' });
-  }
-});
-
-// Sites routes
-app.get('/sites', authenticateUser, (req, res) => {
-  try {
-    const stmt = db.prepare('SELECT * FROM sites WHERE user_id = ? ORDER BY name');
-    const sites = stmt.all([req.user.userId]);
-    res.json(sites);
-  } catch (error) {
-    console.error('Get sites error:', error);
-    res.status(500).json({ error: 'Errore nel recupero cantieri' });
-  }
-});
-
-app.post('/sites', authenticateUser, (req, res) => {
-  try {
-    const { name, owner, address, status, startDate, estimatedEnd } = req.body;
-    const stmt = db.prepare(`
-      INSERT INTO sites (user_id, name, owner, address, status, start_date, estimated_end) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    const result = stmt.run([req.user.userId, name, owner, address, status, startDate, estimatedEnd]);
-    saveDatabase();
-    
-    const getStmt = db.prepare('SELECT * FROM sites WHERE id = ?');
-    const site = getStmt.get([result.lastID]);
-    res.json(site);
-  } catch (error) {
-    console.error('Create site error:', error);
-    res.status(500).json({ error: 'Errore nella creazione cantiere' });
-  }
-});
-
-app.put('/sites/:id', authenticateUser, (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, owner, address, status, startDate, estimatedEnd } = req.body;
-    
-    const stmt = db.prepare(`
-      UPDATE sites 
-      SET name = ?, owner = ?, address = ?, status = ?, start_date = ?, estimated_end = ?
-      WHERE id = ? AND user_id = ?
-    `);
-    stmt.run([name, owner, address, status, startDate, estimatedEnd, id, req.user.userId]);
-    saveDatabase();
-    
-    const getStmt = db.prepare('SELECT * FROM sites WHERE id = ? AND user_id = ?');
-    const site = getStmt.get([id, req.user.userId]);
-    res.json(site);
-  } catch (error) {
-    console.error('Update site error:', error);
-    res.status(500).json({ error: 'Errore nell\'aggiornamento cantiere' });
-  }
-});
-
-app.delete('/sites/:id', authenticateUser, (req, res) => {
-  try {
-    const { id } = req.params;
-    const stmt = db.prepare('DELETE FROM sites WHERE id = ? AND user_id = ?');
-    stmt.run([id, req.user.userId]);
-    saveDatabase();
-    res.json({ message: 'Cantiere eliminato' });
-  } catch (error) {
-    console.error('Delete site error:', error);
-    res.status(500).json({ error: 'Errore nell\'eliminazione cantiere' });
-  }
-});
-
-// Time entries routes
-app.get('/time-entries', authenticateUser, (req, res) => {
-  try {
-    const stmt = db.prepare(`
-      SELECT te.*, w.name as workerName, s.name as siteName 
-      FROM time_entries te
-      JOIN workers w ON te.worker_id = w.id
-      JOIN sites s ON te.site_id = s.id
-      WHERE te.user_id = ?
-      ORDER BY te.date DESC, te.start_time
-    `);
-    const entries = stmt.all([req.user.userId]);
-    res.json(entries);
-  } catch (error) {
-    console.error('Get time entries error:', error);
-    res.status(500).json({ error: 'Errore nel recupero ore' });
-  }
-});
-
-app.post('/time-entries', authenticateUser, (req, res) => {
-  try {
-    const { workerId, siteId, date, startTime, endTime, totalHours, status } = req.body;
-    const stmt = db.prepare(`
-      INSERT INTO time_entries (user_id, worker_id, site_id, date, start_time, end_time, total_hours, status) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const result = stmt.run([req.user.userId, workerId, siteId, date, startTime, endTime, totalHours, status]);
-    saveDatabase();
-    
-    const getStmt = db.prepare(`
-      SELECT te.*, w.name as workerName, s.name as siteName 
-      FROM time_entries te
-      JOIN workers w ON te.worker_id = w.id
-      JOIN sites s ON te.site_id = s.id
-      WHERE te.id = ?
-    `);
-    const entry = getStmt.get([result.lastID]);
-    res.json(entry);
-  } catch (error) {
-    console.error('Create time entry error:', error);
-    res.status(500).json({ error: 'Errore nella registrazione ore' });
-  }
-});
-
-app.put('/time-entries/:id', authenticateUser, (req, res) => {
-  try {
-    const { id } = req.params;
-    const { workerId, siteId, date, startTime, endTime, totalHours, status } = req.body;
-    
-    const stmt = db.prepare(`
-      UPDATE time_entries 
-      SET worker_id = ?, site_id = ?, date = ?, start_time = ?, end_time = ?, total_hours = ?, status = ?
-      WHERE id = ? AND user_id = ?
-    `);
-    stmt.run([workerId, siteId, date, startTime, endTime, totalHours, status, id, req.user.userId]);
-    saveDatabase();
-    
-    const getStmt = db.prepare(`
-      SELECT te.*, w.name as workerName, s.name as siteName 
-      FROM time_entries te
-      JOIN workers w ON te.worker_id = w.id
-      JOIN sites s ON te.site_id = s.id
-      WHERE te.id = ? AND te.user_id = ?
-    `);
-    const entry = getStmt.get([id, req.user.userId]);
-    res.json(entry);
-  } catch (error) {
-    console.error('Update time entry error:', error);
-    res.status(500).json({ error: 'Errore nell\'aggiornamento ore' });
-  }
-});
-
-app.delete('/time-entries/:id', authenticateUser, (req, res) => {
-  try {
-    const { id } = req.params;
-    const stmt = db.prepare('DELETE FROM time_entries WHERE id = ? AND user_id = ?');
-    stmt.run([id, req.user.userId]);
-    saveDatabase();
-    res.json({ message: 'Registrazione ore eliminata' });
-  } catch (error) {
-    console.error('Delete time entry error:', error);
-    res.status(500).json({ error: 'Errore nell\'eliminazione ore' });
-  }
-});
-
-// Payments routes
-app.get('/payments', authenticateUser, (req, res) => {
-  try {
-    const stmt = db.prepare(`
-      SELECT p.*, w.name as workerName 
-      FROM payments p
-      JOIN workers w ON p.worker_id = w.id
-      WHERE p.user_id = ?
-      ORDER BY p.created_at DESC
-    `);
-    const payments = stmt.all([req.user.userId]);
-    res.json(payments);
-  } catch (error) {
-    console.error('Get payments error:', error);
-    res.status(500).json({ error: 'Errore nel recupero pagamenti' });
-  }
-});
-
-app.post('/payments', authenticateUser, (req, res) => {
-  try {
-    const { workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method } = req.body;
-    const stmt = db.prepare(`
-      INSERT INTO payments (user_id, worker_id, week, hours, hourly_rate, total_amount, overtime, status, paid_date, method) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const result = stmt.run([req.user.userId, workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method]);
-    saveDatabase();
-    
-    const getStmt = db.prepare(`
-      SELECT p.*, w.name as workerName 
-      FROM payments p
-      JOIN workers w ON p.worker_id = w.id
-      WHERE p.id = ?
-    `);
-    const payment = getStmt.get([result.lastID]);
-    res.json(payment);
-  } catch (error) {
-    console.error('Create payment error:', error);
-    res.status(500).json({ error: 'Errore nella creazione pagamento' });
-  }
-});
-
-app.put('/payments/:id', authenticateUser, (req, res) => {
-  try {
-    const { id } = req.params;
-    const { workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method } = req.body;
-    
-    const stmt = db.prepare(`
-      UPDATE payments 
-      SET worker_id = ?, week = ?, hours = ?, hourly_rate = ?, total_amount = ?, overtime = ?, status = ?, paid_date = ?, method = ?
-      WHERE id = ? AND user_id = ?
-    `);
-    stmt.run([workerId, week, hours, hourlyRate, totalAmount, overtime, status, paidDate, method, id, req.user.userId]);
-    saveDatabase();
-    
-    const getStmt = db.prepare(`
-      SELECT p.*, w.name as workerName 
-      FROM payments p
-      JOIN workers w ON p.worker_id = w.id
-      WHERE p.id = ? AND p.user_id = ?
-    `);
-    const payment = getStmt.get([id, req.user.userId]);
-    res.json(payment);
-  } catch (error) {
-    console.error('Update payment error:', error);
-    res.status(500).json({ error: 'Errore nell\'aggiornamento pagamento' });
-  }
-});
-
-app.delete('/payments/:id', authenticateUser, (req, res) => {
-  try {
-    const { id } = req.params;
-    const stmt = db.prepare('DELETE FROM payments WHERE id = ? AND user_id = ?');
-    stmt.run([id, req.user.userId]);
-    saveDatabase();
-    res.json({ message: 'Pagamento eliminato' });
-  } catch (error) {
-    console.error('Delete payment error:', error);
-    res.status(500).json({ error: 'Errore nell\'eliminazione pagamento' });
-  }
-});
-
-// Dashboard stats
-app.get('/dashboard/stats', authenticateUser, (req, res) => {
-  try {
-    console.log('📊 Getting dashboard stats for user:', req.user.userId);
-    
-    // Get active workers count
-    const activeWorkersStmt = db.prepare('SELECT COUNT(*) as count FROM workers WHERE user_id = ? AND status = ?');
-    const activeWorkers = activeWorkersStmt.get([req.user.userId, 'Attivo'])?.count || 0;
-    
-    // Get active sites count
-    const activeSitesStmt = db.prepare('SELECT COUNT(*) as count FROM sites WHERE user_id = ? AND status = ?');
-    const activeSites = activeSitesStmt.get([req.user.userId, 'Attivo'])?.count || 0;
-    
-    // Get pending payments count
-    const pendingPaymentsStmt = db.prepare('SELECT COUNT(*) as count FROM payments WHERE user_id = ? AND status = ?');
-    const pendingPayments = pendingPaymentsStmt.get([req.user.userId, 'Da Pagare'])?.count || 0;
-    
-    // Get today's hours
-    const todayHoursStmt = db.prepare('SELECT COALESCE(SUM(total_hours), 0) as total FROM time_entries WHERE user_id = ? AND date = date("now")');
-    const todayHours = todayHoursStmt.get([req.user.userId])?.total || 0;
-
-    const stats = {
-      activeWorkers,
-      activeSites,
-      pendingPayments,
-      todayHours
+    const backupData = {
+      userEmail,
+      timestamp: timestamp || new Date().toISOString(),
+      data,
+      backupVersion: '1.0'
     };
-
-    console.log('✅ Dashboard stats:', stats);
-    res.json(stats);
+    
+    const filePath = getBackupFilePath(userEmail);
+    
+    // Salva il backup su file
+    fs.writeFileSync(filePath, JSON.stringify(backupData, null, 2));
+    
+    console.log('✅ Backup saved successfully for user:', userEmail);
+    console.log('📁 Backup file:', filePath);
+    console.log('📊 Backup contains:', {
+      workers: data.workers?.length || 0,
+      sites: data.sites?.length || 0,
+      timeEntries: data.timeEntries?.length || 0,
+      payments: data.payments?.length || 0
+    });
+    
+    res.json({ 
+      success: true,
+      message: 'Backup salvato con successo',
+      timestamp: backupData.timestamp,
+      filePath: path.basename(filePath)
+    });
   } catch (error) {
-    console.error('❌ Dashboard stats error:', error);
-    res.status(500).json({ error: 'Errore nel recupero statistiche', details: error.message });
+    console.error('❌ Backup error:', error);
+    res.status(500).json({ error: 'Errore durante il salvataggio del backup', details: error.message });
   }
 });
 
-// Site workers
-app.get('/sites/:siteId/workers', authenticateUser, (req, res) => {
+// Endpoint per recuperare il backup
+app.get('/restore/:userEmail', async (req, res) => {
   try {
-    const { siteId } = req.params;
-    const stmt = db.prepare(`
-      SELECT w.* FROM workers w 
-      JOIN site_workers sw ON w.id = sw.worker_id 
-      WHERE sw.site_id = ? AND w.user_id = ?
-    `);
-    const workers = stmt.all([siteId, req.user.userId]);
-    res.json(workers);
+    console.log('📥 Restore request received');
+    const { userEmail } = req.params;
+    
+    if (!userEmail) {
+      console.log('❌ Missing userEmail in restore request');
+      return res.status(400).json({ error: 'userEmail è richiesto' });
+    }
+    
+    const filePath = getBackupFilePath(userEmail);
+    
+    // Controlla se il file di backup esiste
+    if (!fs.existsSync(filePath)) {
+      console.log('❌ No backup found for user:', userEmail);
+      return res.status(404).json({ error: 'Nessun backup trovato per questo utente' });
+    }
+    
+    // Leggi il backup dal file
+    const backupContent = fs.readFileSync(filePath, 'utf8');
+    const backupData = JSON.parse(backupContent);
+    
+    console.log('✅ Backup loaded successfully for user:', userEmail);
+    console.log('📁 Backup file:', filePath);
+    console.log('📊 Backup contains:', {
+      workers: backupData.data?.workers?.length || 0,
+      sites: backupData.data?.sites?.length || 0,
+      timeEntries: backupData.data?.timeEntries?.length || 0,
+      payments: backupData.data?.payments?.length || 0
+    });
+    
+    res.json(backupData);
   } catch (error) {
-    console.error('Get site workers error:', error);
-    res.status(500).json({ error: 'Errore nel recupero operai cantiere' });
+    console.error('❌ Restore error:', error);
+    res.status(500).json({ error: 'Errore durante il recupero del backup', details: error.message });
+  }
+});
+
+// Endpoint per elencare i backup disponibili
+app.get('/backups', async (req, res) => {
+  try {
+    console.log('📋 Listing available backups');
+    
+    const files = fs.readdirSync(backupDir);
+    const backupFiles = files.filter(file => file.startsWith('backup_') && file.endsWith('.json'));
+    
+    const backups = backupFiles.map(file => {
+      const filePath = path.join(backupDir, file);
+      const stats = fs.statSync(filePath);
+      
+      try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        const data = JSON.parse(content);
+        
+        return {
+          filename: file,
+          userEmail: data.userEmail,
+          timestamp: data.timestamp,
+          size: stats.size,
+          modified: stats.mtime,
+          itemCount: {
+            workers: data.data?.workers?.length || 0,
+            sites: data.data?.sites?.length || 0,
+            timeEntries: data.data?.timeEntries?.length || 0,
+            payments: data.data?.payments?.length || 0
+          }
+        };
+      } catch (parseError) {
+        return {
+          filename: file,
+          userEmail: 'unknown',
+          timestamp: stats.mtime.toISOString(),
+          size: stats.size,
+          modified: stats.mtime,
+          error: 'Invalid backup file'
+        };
+      }
+    });
+    
+    console.log('✅ Found', backups.length, 'backup files');
+    res.json({ backups });
+  } catch (error) {
+    console.error('❌ List backups error:', error);
+    res.status(500).json({ error: 'Errore durante il recupero della lista backup', details: error.message });
+  }
+});
+
+// Endpoint per eliminare un backup
+app.delete('/backup/:userEmail', async (req, res) => {
+  try {
+    console.log('🗑️ Delete backup request received');
+    const { userEmail } = req.params;
+    
+    if (!userEmail) {
+      return res.status(400).json({ error: 'userEmail è richiesto' });
+    }
+    
+    const filePath = getBackupFilePath(userEmail);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Backup non trovato per questo utente' });
+    }
+    
+    fs.unlinkSync(filePath);
+    
+    console.log('✅ Backup deleted successfully for user:', userEmail);
+    res.json({ 
+      success: true,
+      message: 'Backup eliminato con successo'
+    });
+  } catch (error) {
+    console.error('❌ Delete backup error:', error);
+    res.status(500).json({ error: 'Errore durante l\'eliminazione del backup', details: error.message });
   }
 });
 
@@ -649,11 +225,16 @@ app.use((err, req, res, next) => {
 
 // Start server
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Edil-Check Database Server running on http://localhost:${PORT}`);
-  console.log(`📊 Database file: ${dbPath}`);
-  console.log(`🔐 Authentication: Simple credentials (email/password in headers)`);
+  console.log(`🚀 Edil-Check Backup Server running on http://localhost:${PORT}`);
+  console.log(`📁 Backup directory: ${backupDir}`);
   console.log(`🌐 CORS enabled for all origins (development mode)`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📋 Available endpoints:`);
+  console.log(`   • GET  /health - Server status`);
+  console.log(`   • POST /backup - Save backup`);
+  console.log(`   • GET  /restore/:userEmail - Load backup`);
+  console.log(`   • GET  /backups - List all backups`);
+  console.log(`   • DELETE /backup/:userEmail - Delete backup`);
 });
 
 server.on('error', (error) => {
@@ -669,11 +250,6 @@ process.on('SIGTERM', () => {
   console.log('👋 SIGTERM received, shutting down gracefully');
   server.close(() => {
     console.log('✅ Server closed');
-    if (db) {
-      saveDatabase();
-      db.close();
-      console.log('✅ Database closed');
-    }
     process.exit(0);
   });
 });
@@ -682,11 +258,6 @@ process.on('SIGINT', () => {
   console.log('👋 SIGINT received, shutting down gracefully');
   server.close(() => {
     console.log('✅ Server closed');
-    if (db) {
-      saveDatabase();
-      db.close();
-      console.log('✅ Database closed');
-    }
     process.exit(0);
   });
 });
