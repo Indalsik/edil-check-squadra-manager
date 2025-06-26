@@ -217,11 +217,11 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [database, setDatabase] = useState<any>(localDatabase)
 
+  // Separate initialization effect that only runs when mode changes or manual config application
   useEffect(() => {
     localStorage.setItem('edilcheck_database_mode', mode)
-    localStorage.setItem('edilcheck_remote_config', JSON.stringify(remoteConfig))
     initializeDatabase()
-  }, [mode, remoteConfig])
+  }, [mode]) // Remove remoteConfig from dependencies
 
   const initializeDatabase = async () => {
     setConnectionError(null)
@@ -270,7 +270,14 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
 
   const setRemoteConfig = (host: string, port: string) => {
     console.log(`🔧 Updating remote config: ${host}:${port}`)
-    setRemoteConfigState({ host, port })
+    const newConfig = { host, port }
+    setRemoteConfigState(newConfig)
+    localStorage.setItem('edilcheck_remote_config', JSON.stringify(newConfig))
+    
+    // Only reinitialize if we're currently in remote mode
+    if (mode === 'remote') {
+      initializeDatabase()
+    }
   }
 
   return (

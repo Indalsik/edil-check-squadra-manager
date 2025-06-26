@@ -171,11 +171,6 @@ export const LoginPage = () => {
     // Clear forms when switching modes
     setLoginData({ email: '', password: '' })
     setRegisterData({ email: '', password: '', confirmPassword: '' })
-    
-    if (newMode === 'remote') {
-      // Apply remote configuration only when switching to remote mode
-      setRemoteConfig(localRemoteConfig.host, localRemoteConfig.port)
-    }
   }
 
   const handleRemoteConfigChange = (field: 'host' | 'port', value: string) => {

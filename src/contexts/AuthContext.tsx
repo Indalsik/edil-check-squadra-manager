@@ -1,3 +1,4 @@
+
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { useDatabase } from '@/contexts/DatabaseContext'
 import { authAPI, setUserCredentials, clearUserCredentials } from '@/lib/api'
@@ -84,7 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return { success: true }
         } else {
           console.log('❌ Local login failed: invalid credentials')
-          return { success: false, error: 'Credenziali non valide' }
+          return { success: false, error: 'Credenziali non valide - Verifica email e password o registra un nuovo account' }
         }
       } else {
         // Remote authentication
@@ -103,7 +104,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.error('❌ Remote login error:', error)
           return { 
             success: false, 
-            error: error.message || 'Errore durante il login' 
+            error: error.message || 'Errore durante il login remoto' 
           }
         }
       }
@@ -125,9 +126,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const users = JSON.parse(localStorage.getItem('edilcheck_users') || '[]')
         
         // Check if user already exists
-        if (users.find((u: any) => u.email === email)) {
+        const existingUser = users.find((u: any) => u.email === email)
+        if (existingUser) {
           console.log('❌ Local registration failed: email already exists')
-          return { success: false, error: 'Email già registrata nel database locale' }
+          return { 
+            success: false, 
+            error: `Email già registrata nel database locale. Usa "Accedi" con la password corretta o prova con un'email diversa.` 
+          }
         }
         
         const newUser = {
@@ -164,7 +169,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           let errorMessage = error.message || 'Errore durante la registrazione'
           
           if (errorMessage.includes('già registrata') || errorMessage.includes('already registered')) {
-            errorMessage = `Email già registrata sul server remoto. Prova ad accedere o usa un'email diversa.`
+            errorMessage = `Email già registrata sul server remoto. Usa "Accedi" con la password corretta o prova con un'email diversa.`
           } else if (errorMessage.includes('connettersi al server') || errorMessage.includes('Failed to fetch')) {
             errorMessage = `Impossibile connettersi al server remoto. Verifica che il server sia in esecuzione o passa al database locale.`
           }
