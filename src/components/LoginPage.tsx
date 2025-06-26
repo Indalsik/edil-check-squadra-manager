@@ -1,4 +1,3 @@
-
 import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,7 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDatabase } from '@/contexts/DatabaseContext'
 import { useTheme } from '@/contexts/ThemeContext'
-import { Building2, Moon, Sun, Database, Server, AlertCircle, Settings } from 'lucide-react'
+import { Building2, Moon, Sun, Database, Server, AlertCircle, Settings, Info } from 'lucide-react'
 import { toast } from 'sonner'
 
 export const LoginPage = () => {
@@ -135,6 +134,19 @@ export const LoginPage = () => {
     )
   }
 
+  // Credenziali di test per il database remoto
+  const fillTestCredentials = () => {
+    setLoginData({ email: 'admin@edilcheck.com', password: 'edilcheck123' })
+  }
+
+  const fillTestRegisterCredentials = () => {
+    setRegisterData({ 
+      email: 'test@edilcheck.com', 
+      password: 'edilcheck123', 
+      confirmPassword: 'edilcheck123' 
+    })
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-edil-blue to-edil-dark-blue p-4">
       <div className="absolute top-4 right-4">
@@ -191,6 +203,30 @@ export const LoginPage = () => {
                     required
                   />
                 </div>
+                
+                {/* Credenziali di test per database remoto */}
+                {mode === 'remote' && (
+                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center gap-2 text-blue-800 mb-2">
+                      <Info className="h-4 w-4" />
+                      <span className="text-sm font-medium">Credenziali di Test</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={fillTestCredentials}
+                      className="text-xs bg-blue-100 hover:bg-blue-200 border-blue-300"
+                    >
+                      Usa credenziali di test
+                    </Button>
+                    <p className="text-xs text-blue-600 mt-1">
+                      Email: admin@edilcheck.com<br />
+                      Password: edilcheck123
+                    </p>
+                  </div>
+                )}
+                
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? 'Accesso in corso...' : 'Accedi'}
                 </Button>
@@ -231,6 +267,29 @@ export const LoginPage = () => {
                     required
                   />
                 </div>
+                
+                {/* Credenziali di test per registrazione */}
+                {mode === 'remote' && (
+                  <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center gap-2 text-green-800 mb-2">
+                      <Info className="h-4 w-4" />
+                      <span className="text-sm font-medium">Registrazione di Test</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={fillTestRegisterCredentials}
+                      className="text-xs bg-green-100 hover:bg-green-200 border-green-300"
+                    >
+                      Usa dati di test
+                    </Button>
+                    <p className="text-xs text-green-600 mt-1">
+                      Compila automaticamente con dati di test
+                    </p>
+                  </div>
+                )}
+                
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? 'Registrazione in corso...' : 'Registrati'}
                 </Button>

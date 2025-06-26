@@ -97,7 +97,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     }
   }
 
-  // Test connessione
+  // Test connessione con timeout
   const testConnection = async (): Promise<boolean> => {
     if (mode === 'local') {
       setIsConnected(true)
@@ -106,27 +106,39 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
+      console.log('🔍 Testing remote connection with timeout...')
       const testDb = remoteDatabase || new RemoteDatabase(remoteConfig)
-      const connected = await testDb.testConnection()
+      
+      // Test con timeout di 5 secondi
+      const timeoutPromise = new Promise<boolean>((_, reject) => {
+        setTimeout(() => reject(new Error('Connection timeout')), 5000)
+      })
+      
+      const connectionPromise = testDb.testConnection()
+      const connected = await Promise.race([connectionPromise, timeoutPromise])
+      
       setIsConnected(connected)
       
       if (connected) {
         setConnectionError(null)
         console.log('✅ Remote database connected')
       } else {
-        setConnectionError('Impossibile connettersi al server remoto')
+        setConnectionError('Server remoto non raggiungibile')
         console.log('❌ Remote database connection failed')
       }
       return connected
     } catch (error: any) {
       setIsConnected(false)
-      setConnectionError(error.message)
+      const errorMsg = error.message.includes('timeout') 
+        ? 'Timeout connessione server remoto' 
+        : `Errore connessione: ${error.message}`
+      setConnectionError(errorMsg)
       console.error('❌ Remote database error:', error)
       return false
     }
   }
 
-  // Inizializza database all'avvio
+  // Inizializza database all'avvio con timeout
   useEffect(() => {
     const initDatabase = async () => {
       console.log(`🚀 Initializing database in ${mode} mode`)
@@ -137,24 +149,35 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
         setIsInitialized(true)
         console.log('✅ Local database ready')
       } else {
-        // Remote mode
+        // Remote mode con timeout
         const newRemoteDb = new RemoteDatabase(remoteConfig)
         setRemoteDatabase(newRemoteDb)
         
-        // Test connection
         try {
-          const connected = await newRemoteDb.testConnection()
+          console.log('🔍 Testing remote connection with 3 second timeout...')
+          
+          // Timeout più breve per l'inizializzazione
+          const timeoutPromise = new Promise<boolean>((_, reject) => {
+            setTimeout(() => reject(new Error('Connection timeout')), 3000)
+          })
+          
+          const connectionPromise = newRemoteDb.testConnection()
+          const connected = await Promise.race([connectionPromise, timeoutPromise])
+          
           setIsConnected(connected)
           if (connected) {
             setConnectionError(null)
             console.log('✅ Remote database connected')
           } else {
-            setConnectionError('Impossibile connettersi al server remoto. Usando database locale come fallback.')
+            setConnectionError('Server remoto non disponibile. Usando database locale.')
             console.log('⚠️ Remote database connection failed, using local fallback')
           }
         } catch (error: any) {
           setIsConnected(false)
-          setConnectionError(`Errore connessione remota: ${error.message}. Usando database locale come fallback.`)
+          const errorMsg = error.message.includes('timeout') 
+            ? 'Server remoto non risponde. Usando database locale.' 
+            : `Errore server remoto. Usando database locale.`
+          setConnectionError(errorMsg)
           console.error('❌ Remote database error, using local fallback:', error)
         }
         
@@ -183,242 +206,251 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [mode, remoteDatabase, user])
 
-  // Operazioni database con fallback automatico
+  // Helper per decidere quale database usare
+  const shouldUseRemote = () => {
+    return mode === 'remote' && isConnected && remoteDatabase
+  }
+
+  // Operazioni database con fallback automatico e gestione errori
   const getWorkers = async () => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.getWorkers(userEmail)
-    } else {
-      try {
-        return await remoteDatabase.getWorkers()
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.getWorkers(userEmail)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.getWorkers()
+    } catch (error) {
+      console.warn('Remote getWorkers failed, falling back to local:', error)
+      return localDatabase.getWorkers(userEmail)
     }
   }
 
   const addWorker = async (worker: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.addWorker(userEmail, worker)
-    } else {
-      try {
-        return await remoteDatabase.addWorker(worker)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.addWorker(userEmail, worker)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.addWorker(worker)
+    } catch (error) {
+      console.warn('Remote addWorker failed, falling back to local:', error)
+      return localDatabase.addWorker(userEmail, worker)
     }
   }
 
   const updateWorker = async (id: number, worker: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.updateWorker(userEmail, id, worker)
-    } else {
-      try {
-        return await remoteDatabase.updateWorker(id, worker)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.updateWorker(userEmail, id, worker)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.updateWorker(id, worker)
+    } catch (error) {
+      console.warn('Remote updateWorker failed, falling back to local:', error)
+      return localDatabase.updateWorker(userEmail, id, worker)
     }
   }
 
   const deleteWorker = async (id: number) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       localDatabase.deleteWorker(userEmail, id)
-    } else {
-      try {
-        await remoteDatabase.deleteWorker(id)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        localDatabase.deleteWorker(userEmail, id)
-      }
+      return
+    }
+    
+    try {
+      await remoteDatabase!.deleteWorker(id)
+    } catch (error) {
+      console.warn('Remote deleteWorker failed, falling back to local:', error)
+      localDatabase.deleteWorker(userEmail, id)
     }
   }
 
   const getSites = async () => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.getSites(userEmail)
-    } else {
-      try {
-        return await remoteDatabase.getSites()
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.getSites(userEmail)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.getSites()
+    } catch (error) {
+      console.warn('Remote getSites failed, falling back to local:', error)
+      return localDatabase.getSites(userEmail)
     }
   }
 
   const addSite = async (site: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.addSite(userEmail, site)
-    } else {
-      try {
-        return await remoteDatabase.addSite(site)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.addSite(userEmail, site)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.addSite(site)
+    } catch (error) {
+      console.warn('Remote addSite failed, falling back to local:', error)
+      return localDatabase.addSite(userEmail, site)
     }
   }
 
   const updateSite = async (id: number, site: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.updateSite(userEmail, id, site)
-    } else {
-      try {
-        return await remoteDatabase.updateSite(id, site)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.updateSite(userEmail, id, site)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.updateSite(id, site)
+    } catch (error) {
+      console.warn('Remote updateSite failed, falling back to local:', error)
+      return localDatabase.updateSite(userEmail, id, site)
     }
   }
 
   const deleteSite = async (id: number) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       localDatabase.deleteSite(userEmail, id)
-    } else {
-      try {
-        await remoteDatabase.deleteSite(id)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        localDatabase.deleteSite(userEmail, id)
-      }
+      return
+    }
+    
+    try {
+      await remoteDatabase!.deleteSite(id)
+    } catch (error) {
+      console.warn('Remote deleteSite failed, falling back to local:', error)
+      localDatabase.deleteSite(userEmail, id)
     }
   }
 
   const getTimeEntries = async () => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.getTimeEntries(userEmail)
-    } else {
-      try {
-        return await remoteDatabase.getTimeEntries()
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.getTimeEntries(userEmail)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.getTimeEntries()
+    } catch (error) {
+      console.warn('Remote getTimeEntries failed, falling back to local:', error)
+      return localDatabase.getTimeEntries(userEmail)
     }
   }
 
   const addTimeEntry = async (entry: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.addTimeEntry(userEmail, entry)
-    } else {
-      try {
-        return await remoteDatabase.addTimeEntry(entry)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.addTimeEntry(userEmail, entry)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.addTimeEntry(entry)
+    } catch (error) {
+      console.warn('Remote addTimeEntry failed, falling back to local:', error)
+      return localDatabase.addTimeEntry(userEmail, entry)
     }
   }
 
   const updateTimeEntry = async (id: number, entry: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.updateTimeEntry(userEmail, id, entry)
-    } else {
-      try {
-        return await remoteDatabase.updateTimeEntry(id, entry)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.updateTimeEntry(userEmail, id, entry)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.updateTimeEntry(id, entry)
+    } catch (error) {
+      console.warn('Remote updateTimeEntry failed, falling back to local:', error)
+      return localDatabase.updateTimeEntry(userEmail, id, entry)
     }
   }
 
   const deleteTimeEntry = async (id: number) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       localDatabase.deleteTimeEntry(userEmail, id)
-    } else {
-      try {
-        await remoteDatabase.deleteTimeEntry(id)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        localDatabase.deleteTimeEntry(userEmail, id)
-      }
+      return
+    }
+    
+    try {
+      await remoteDatabase!.deleteTimeEntry(id)
+    } catch (error) {
+      console.warn('Remote deleteTimeEntry failed, falling back to local:', error)
+      localDatabase.deleteTimeEntry(userEmail, id)
     }
   }
 
   const getPayments = async () => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.getPayments(userEmail)
-    } else {
-      try {
-        return await remoteDatabase.getPayments()
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.getPayments(userEmail)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.getPayments()
+    } catch (error) {
+      console.warn('Remote getPayments failed, falling back to local:', error)
+      return localDatabase.getPayments(userEmail)
     }
   }
 
   const addPayment = async (payment: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.addPayment(userEmail, payment)
-    } else {
-      try {
-        return await remoteDatabase.addPayment(payment)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.addPayment(userEmail, payment)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.addPayment(payment)
+    } catch (error) {
+      console.warn('Remote addPayment failed, falling back to local:', error)
+      return localDatabase.addPayment(userEmail, payment)
     }
   }
 
   const updatePayment = async (id: number, payment: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.updatePayment(userEmail, id, payment)
-    } else {
-      try {
-        return await remoteDatabase.updatePayment(id, payment)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.updatePayment(userEmail, id, payment)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.updatePayment(id, payment)
+    } catch (error) {
+      console.warn('Remote updatePayment failed, falling back to local:', error)
+      return localDatabase.updatePayment(userEmail, id, payment)
     }
   }
 
   const deletePayment = async (id: number) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       localDatabase.deletePayment(userEmail, id)
-    } else {
-      try {
-        await remoteDatabase.deletePayment(id)
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        localDatabase.deletePayment(userEmail, id)
-      }
+      return
+    }
+    
+    try {
+      await remoteDatabase!.deletePayment(id)
+    } catch (error) {
+      console.warn('Remote deletePayment failed, falling back to local:', error)
+      localDatabase.deletePayment(userEmail, id)
     }
   }
 
   const getDashboardStats = async () => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local' || !isConnected || !remoteDatabase) {
+    if (!shouldUseRemote()) {
       return localDatabase.getDashboardStats(userEmail)
-    } else {
-      try {
-        return await remoteDatabase.getDashboardStats()
-      } catch (error) {
-        console.warn('Remote database failed, falling back to local:', error)
-        return localDatabase.getDashboardStats(userEmail)
-      }
+    }
+    
+    try {
+      return await remoteDatabase!.getDashboardStats()
+    } catch (error) {
+      console.warn('Remote getDashboardStats failed, falling back to local:', error)
+      return localDatabase.getDashboardStats(userEmail)
     }
   }
 
