@@ -14,7 +14,7 @@ const queryClient = new QueryClient();
 
 const AppContent = () => {
   const { user, isLoading } = useAuth();
-  const { isConnected, connectionError } = useDatabase();
+  const { isConnected } = useDatabase();
 
   if (isLoading) {
     return (
@@ -27,15 +27,13 @@ const AppContent = () => {
     );
   }
 
-  if (!isConnected && !connectionError?.includes('Using local database')) {
+  // Il database locale è sempre connesso immediatamente
+  if (!isConnected) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-red-500 mx-auto"></div>
-          <p className="mt-4 text-lg">Connessione al database...</p>
-          {connectionError && (
-            <p className="mt-2 text-sm text-red-600">{connectionError}</p>
-          )}
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-edil-blue mx-auto"></div>
+          <p className="mt-4 text-lg">Inizializzazione database locale...</p>
         </div>
       </div>
     );

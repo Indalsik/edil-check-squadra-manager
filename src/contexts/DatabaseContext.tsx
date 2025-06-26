@@ -14,6 +14,7 @@ interface DatabaseContextType {
   isRemoteAvailable: boolean
   connectionError: string | null
   testRemoteConnection: () => Promise<boolean>
+  isConnected: boolean
   
   // Sync functionality (solo per backup)
   syncStatus: SyncStatus
@@ -78,6 +79,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [remoteDatabase, setRemoteDatabase] = useState<RemoteDatabase | null>(null)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(databaseSync.getStatus())
+  const [isConnected, setIsConnected] = useState(false)
 
   // Aggiorna modalità database
   const handleSetMode = (newMode: DatabaseMode) => {
@@ -167,10 +169,14 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   // Inizializza all'avvio
   useEffect(() => {
     const initDatabase = async () => {
-      console.log(`🚀 Initializing database in ${mode} mode`)
+      console.log(`🚀 Initializing local database in ${mode} mode`)
+      
+      // Il database locale è SEMPRE disponibile immediatamente
+      setIsConnected(true)
+      setConnectionError('Using local database')
       
       if (mode === 'local-with-backup') {
-        // Configura database remoto per backup
+        // Configura database remoto per backup (in background, non bloccante)
         const newRemoteDb = new RemoteDatabase(remoteConfig)
         setRemoteDatabase(newRemoteDb)
         databaseSync.setRemoteDatabase(newRemoteDb)
@@ -196,7 +202,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
             setConnectionError('Server remoto non disponibile per backup')
             console.log('⚠️ Remote backup server not available')
           }
-        }, 1000)
+        }, 100) // Molto veloce, non bloccante
       } else {
         setIsRemoteAvailable(false)
         setConnectionError(null)
@@ -205,7 +211,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     initDatabase()
-  }, [mode, remoteConfig, user])
+  }, [mode, remoteConfig])
 
   // Listen to sync status changes
   useEffect(() => {
@@ -309,6 +315,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       isRemoteAvailable,
       connectionError,
       testRemoteConnection,
+      isConnected,
       syncStatus,
       backupToRemote,
       restoreFromRemote,
