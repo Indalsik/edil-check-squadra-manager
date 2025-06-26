@@ -1,9 +1,11 @@
+
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Clock, Plus, Calendar, MapPin, Edit, Trash2 } from "lucide-react"
-import { database, Worker, Site } from "@/lib/database"
+import { Worker, Site } from "@/lib/local-database"
+import { useDatabase } from "@/contexts/DatabaseContext"
 import { TimeEntryDialog } from "@/components/dialogs/TimeEntryDialog"
 import { toast } from "@/components/ui/sonner"
 import {
@@ -25,16 +27,16 @@ export function TimeTracking() {
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [entryToDelete, setEntryToDelete] = useState<any | null>(null)
+  const { getTimeEntries, getWorkers, getSites, addTimeEntry, updateTimeEntry, deleteTimeEntry } = useDatabase()
 
   useEffect(() => {
     loadData()
   }, [])
 
   const loadData = async () => {
-    await database.init()
-    const entriesData = database.getTimeEntries()
-    const workersData = database.getWorkers()
-    const sitesData = database.getSites()
+    const entriesData = await getTimeEntries()
+    const workersData = await getWorkers()
+    const sitesData = await getSites()
     
     setTimeEntries(entriesData)
     setWorkers(workersData)
@@ -71,9 +73,9 @@ export function TimeTracking() {
     setDeleteDialogOpen(true)
   }
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (entryToDelete) {
-      database.deleteTimeEntry(entryToDelete.id)
+      await deleteTimeEntry(entryToDelete.id)
       loadData()
       toast.success("Registrazione ore eliminata con successo")
       setDeleteDialogOpen(false)
@@ -81,12 +83,12 @@ export function TimeTracking() {
     }
   }
 
-  const handleSaveEntry = (entryData: any) => {
+  const handleSaveEntry = async (entryData: any) => {
     if ('id' in entryData && entryData.id) {
-      database.updateTimeEntry(entryData.id, entryData)
+      await updateTimeEntry(entryData.id, entryData)
       toast.success("Registrazione ore aggiornata con successo")
     } else {
-      database.addTimeEntry(entryData)
+      await addTimeEntry(entryData)
       toast.success("Ore registrate con successo")
     }
     loadData()

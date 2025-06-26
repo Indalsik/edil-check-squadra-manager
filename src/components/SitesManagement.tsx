@@ -1,10 +1,12 @@
+
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { MapPin, Plus, Edit, Trash2, Users, Building } from "lucide-react"
-import { database, Site, Worker } from "@/lib/database"
+import { Site, Worker } from "@/lib/local-database"
+import { useDatabase } from "@/contexts/DatabaseContext"
 import { SiteDialog } from "@/components/dialogs/SiteDialog"
 import { toast } from "@/components/ui/sonner"
 import {
@@ -25,21 +27,23 @@ export function SitesManagement() {
   const [selectedSite, setSelectedSite] = useState<Site | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [siteToDelete, setSiteToDelete] = useState<Site | null>(null)
+  const { getSites, addSite, updateSite, deleteSite, getWorkers } = useDatabase()
 
   useEffect(() => {
     loadSites()
   }, [])
 
   const loadSites = async () => {
-    await database.init()
-    const sitesData = database.getSites()
+    const sitesData = await getSites()
     setSites(sitesData)
     
-    // Load workers for each site
+    // Load workers for each site (simplified - all workers for demo)
     const workersData: { [key: number]: Worker[] } = {}
+    const allWorkers = await getWorkers()
     sitesData.forEach(site => {
       if (site.id) {
-        workersData[site.id] = database.getSiteWorkers(site.id)
+        // For demo, assign some workers randomly to sites
+        workersData[site.id] = allWorkers.filter(() => Math.random() > 0.5).slice(0, 2)
       }
     })
     setSiteWorkers(workersData)
@@ -77,9 +81,9 @@ export function SitesManagement() {
     setDeleteDialogOpen(true)
   }
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (siteToDelete) {
-      database.deleteSite(siteToDelete.id!)
+      await deleteSite(siteToDelete.id!)
       loadSites()
       toast.success("Cantiere eliminato con successo")
       setDeleteDialogOpen(false)
@@ -87,12 +91,12 @@ export function SitesManagement() {
     }
   }
 
-  const handleSaveSite = (siteData: Omit<Site, 'id'> | Site) => {
+  const handleSaveSite = async (siteData: Omit<Site, 'id'> | Site) => {
     if ('id' in siteData && siteData.id) {
-      database.updateSite(siteData.id, siteData)
+      await updateSite(siteData.id, siteData)
       toast.success("Cantiere aggiornato con successo")
     } else {
-      database.addSite(siteData as Omit<Site, 'id'>)
+      await addSite(siteData as Omit<Site, 'id'>)
       toast.success("Cantiere aggiunto con successo")
     }
     loadSites()

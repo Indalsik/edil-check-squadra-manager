@@ -1,9 +1,10 @@
+
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Users, Clock, Calendar, MapPin, Wallet, TrendingUp, AlertCircle, CheckCircle } from "lucide-react"
-import { database } from "@/lib/database"
+import { useDatabase } from "@/contexts/DatabaseContext"
 
 interface DashboardOverviewProps {
   onSectionChange: (section: string) => void;
@@ -18,20 +19,19 @@ export function DashboardOverview({ onSectionChange }: DashboardOverviewProps) {
   })
   const [recentActivities, setRecentActivities] = useState<any[]>([])
   const [paymentsPreview, setPaymentsPreview] = useState<any[]>([])
+  const { getDashboardStats, getTimeEntries, getPayments } = useDatabase()
 
   useEffect(() => {
     loadDashboardData()
   }, [])
 
   const loadDashboardData = async () => {
-    await database.init()
-    
     // Load stats
-    const dashboardStats = database.getDashboardStats()
+    const dashboardStats = await getDashboardStats()
     setStats(dashboardStats)
 
     // Load recent time entries for activities
-    const timeEntries = database.getTimeEntries().slice(0, 3)
+    const timeEntries = (await getTimeEntries()).slice(0, 3)
     const activities = timeEntries.map(entry => ({
       id: entry.id,
       type: "clock-in",
@@ -43,7 +43,7 @@ export function DashboardOverview({ onSectionChange }: DashboardOverviewProps) {
     setRecentActivities(activities)
 
     // Load payments preview
-    const payments = database.getPayments()
+    const payments = await getPayments()
     const pendingPayments = payments.filter(p => p.status === 'Da Pagare').slice(0, 2)
     const paidPayments = payments.filter(p => p.status === 'Pagato').slice(0, 1)
     setPaymentsPreview([...pendingPayments, ...paidPayments])

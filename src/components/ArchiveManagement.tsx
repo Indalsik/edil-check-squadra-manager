@@ -1,23 +1,23 @@
+
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { FileText, Calendar, DollarSign } from "lucide-react"
-import { database } from "@/lib/database"
+import { useDatabase } from "@/contexts/DatabaseContext"
 
 export function ArchiveManagement() {
   const [archiveData, setArchiveData] = useState<any[]>([])
+  const { getPayments, getSites } = useDatabase()
 
   useEffect(() => {
     loadArchiveData()
   }, [])
 
   const loadArchiveData = async () => {
-    await database.init()
-    
     // Get all paid payments grouped by site
-    const payments = database.getPayments().filter(p => p.status === 'Pagato')
-    const sites = database.getSites()
+    const payments = (await getPayments()).filter(p => p.status === 'Pagato')
+    const sites = await getSites()
     
     // Group payments by site (for demo purposes, we'll group by worker's main site)
     const groupedData = sites.map(site => {

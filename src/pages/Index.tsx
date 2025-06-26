@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react"
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
@@ -19,14 +20,14 @@ const Index = () => {
   const [isInitialized, setIsInitialized] = useState(false)
   const [showDatabaseDialog, setShowDatabaseDialog] = useState(false)
   const { user, logout } = useAuth()
-  const { mode, isConnected, connectionError, database } = useDatabase()
+  const { mode, isConnected, connectionError } = useDatabase()
   const { theme, toggleTheme } = useTheme()
 
   useEffect(() => {
     const initDatabase = async () => {
       if (user && isConnected) {
         try {
-          await database.init()
+          // Database initialization is handled in DatabaseContext
           setIsInitialized(true)
         } catch (error) {
           console.error('Failed to initialize database:', error)
@@ -36,7 +37,7 @@ const Index = () => {
     }
 
     initDatabase()
-  }, [user, isConnected, database])
+  }, [user, isConnected])
 
   if (!isInitialized) {
     return (

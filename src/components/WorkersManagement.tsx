@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -5,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Users, Plus, Edit, Trash2, Phone, Mail } from "lucide-react"
 import { useDatabase } from "@/contexts/DatabaseContext"
-import { Worker } from "@/lib/database"
+import { Worker } from "@/lib/local-database"
 import { WorkerDialog } from "@/components/dialogs/WorkerDialog"
 import { toast } from "@/components/ui/sonner"
 import {
@@ -25,16 +26,15 @@ export function WorkersManagement() {
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [workerToDelete, setWorkerToDelete] = useState<Worker | null>(null)
-  const { database } = useDatabase()
+  const { getWorkers, addWorker, updateWorker, deleteWorker } = useDatabase()
 
   useEffect(() => {
     loadWorkers()
-  }, [database])
+  }, [])
 
   const loadWorkers = async () => {
     try {
-      await database.init()
-      const workersData = await database.getWorkers()
+      const workersData = await getWorkers()
       setWorkers(workersData)
     } catch (error) {
       console.error('Error loading workers:', error)
@@ -75,7 +75,7 @@ export function WorkersManagement() {
   const confirmDelete = async () => {
     if (workerToDelete) {
       try {
-        await database.deleteWorker(workerToDelete.id!)
+        await deleteWorker(workerToDelete.id!)
         loadWorkers()
         toast.success("Operaio eliminato con successo")
         setDeleteDialogOpen(false)
@@ -89,10 +89,10 @@ export function WorkersManagement() {
   const handleSaveWorker = async (workerData: Omit<Worker, 'id'> | Worker) => {
     try {
       if ('id' in workerData && workerData.id) {
-        await database.updateWorker(workerData.id, workerData)
+        await updateWorker(workerData.id, workerData)
         toast.success("Operaio aggiornato con successo")
       } else {
-        await database.addWorker(workerData as Omit<Worker, 'id'>)
+        await addWorker(workerData as Omit<Worker, 'id'>)
         toast.success("Operaio aggiunto con successo")
       }
       loadWorkers()
