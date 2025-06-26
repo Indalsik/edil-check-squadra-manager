@@ -34,9 +34,9 @@ export const LoginPage = () => {
     setLastError(null)
     
     try {
-      const result = await login(loginData.email, loginData.password, mode, mode === 'remote' ? localRemoteConfig : undefined)
+      const result = await login(loginData.email, loginData.password)
       if (result.success) {
-        // Salva le credenziali per il backup remoto
+        // Salva le credenziali per il backup remoto se necessario
         if (mode === 'local-with-backup') {
           localStorage.setItem('edilcheck_credentials', JSON.stringify({ 
             email: loginData.email, 
@@ -80,9 +80,9 @@ export const LoginPage = () => {
     setIsLoading(true)
     
     try {
-      const result = await register(registerData.email, registerData.password, mode, mode === 'remote' ? localRemoteConfig : undefined)
+      const result = await register(registerData.email, registerData.password)
       if (result.success) {
-        // Salva le credenziali per il backup remoto
+        // Salva le credenziali per il backup remoto se necessario
         if (mode === 'local-with-backup') {
           localStorage.setItem('edilcheck_credentials', JSON.stringify({ 
             email: registerData.email, 
@@ -151,7 +151,7 @@ export const LoginPage = () => {
     )
   }
 
-  // Credenziali di test per il database remoto
+  // Credenziali di test per il database locale
   const fillTestCredentials = () => {
     setLoginData({ email: 'admin@edilcheck.com', password: 'edilcheck123' })
   }
@@ -221,28 +221,26 @@ export const LoginPage = () => {
                   />
                 </div>
                 
-                {/* Credenziali di test per database remoto */}
-                {mode === 'local-with-backup' && (
-                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                    <div className="flex items-center gap-2 text-blue-800 mb-2">
-                      <Info className="h-4 w-4" />
-                      <span className="text-sm font-medium">Credenziali di Test</span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={fillTestCredentials}
-                      className="text-xs bg-blue-100 hover:bg-blue-200 border-blue-300"
-                    >
-                      Usa credenziali di test
-                    </Button>
-                    <p className="text-xs text-blue-600 mt-1">
-                      Email: admin@edilcheck.com<br />
-                      Password: edilcheck123
-                    </p>
+                {/* Credenziali di test per database locale */}
+                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center gap-2 text-blue-800 mb-2">
+                    <Info className="h-4 w-4" />
+                    <span className="text-sm font-medium">Credenziali di Test</span>
                   </div>
-                )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={fillTestCredentials}
+                    className="text-xs bg-blue-100 hover:bg-blue-200 border-blue-300"
+                  >
+                    Usa credenziali di test
+                  </Button>
+                  <p className="text-xs text-blue-600 mt-1">
+                    Email: admin@edilcheck.com<br />
+                    Password: edilcheck123
+                  </p>
+                </div>
                 
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? 'Accesso in corso...' : 'Accedi'}
@@ -286,26 +284,24 @@ export const LoginPage = () => {
                 </div>
                 
                 {/* Credenziali di test per registrazione */}
-                {mode === 'local-with-backup' && (
-                  <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                    <div className="flex items-center gap-2 text-green-800 mb-2">
-                      <Info className="h-4 w-4" />
-                      <span className="text-sm font-medium">Registrazione di Test</span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={fillTestRegisterCredentials}
-                      className="text-xs bg-green-100 hover:bg-green-200 border-green-300"
-                    >
-                      Usa dati di test
-                    </Button>
-                    <p className="text-xs text-green-600 mt-1">
-                      Compila automaticamente con dati di test
-                    </p>
+                <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                  <div className="flex items-center gap-2 text-green-800 mb-2">
+                    <Info className="h-4 w-4" />
+                    <span className="text-sm font-medium">Registrazione di Test</span>
                   </div>
-                )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={fillTestRegisterCredentials}
+                    className="text-xs bg-green-100 hover:bg-green-200 border-green-300"
+                  >
+                    Usa dati di test
+                  </Button>
+                  <p className="text-xs text-green-600 mt-1">
+                    Compila automaticamente con dati di test
+                  </p>
+                </div>
                 
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? 'Registrazione in corso...' : 'Registrati'}
@@ -397,9 +393,10 @@ export const LoginPage = () => {
                 )}
 
                 <div className="text-xs text-orange-700 bg-orange-100 p-2 rounded">
-                  <strong>📍 Dove sono le credenziali del server?</strong><br />
-                  • Le credenziali vengono salvate automaticamente nel localStorage quando fai login<br />
-                  • Vengono usate per autenticarsi al server sulla porta 3002<br />
+                  <strong>📍 Server di Backup</strong><br />
+                  • L'autenticazione avviene sempre localmente nel browser<br />
+                  • Il server remoto serve solo per backup e restore dei dati<br />
+                  • Le credenziali vengono salvate per sincronizzare i dati quando necessario<br />
                   • Il server deve essere avviato separatamente con: <code>cd database-server && npm start</code>
                 </div>
               </div>
