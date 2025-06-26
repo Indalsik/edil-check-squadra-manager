@@ -50,7 +50,16 @@ export const useDatabase = () => {
 }
 
 export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
-  const { user } = useAuth()
+  // Safely get user with fallback
+  let user = null
+  try {
+    const authContext = useAuth()
+    user = authContext?.user
+  } catch (error) {
+    // Auth context not ready yet, use null user
+    console.log('Auth context not ready, using anonymous user')
+  }
+
   const [mode, setMode] = useState<DatabaseMode>(() => {
     const saved = localStorage.getItem('edilcheck_database_mode')
     return (saved as DatabaseMode) || 'local'
@@ -154,8 +163,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
 
   // Operazioni database
   const getWorkers = async () => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.getWorkers(user?.email || 'anonymous')
+      return localDatabase.getWorkers(userEmail)
     } else if (remoteDatabase) {
       return await remoteDatabase.getWorkers()
     }
@@ -163,8 +173,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const addWorker = async (worker: any) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.addWorker(user?.email || 'anonymous', worker)
+      return localDatabase.addWorker(userEmail, worker)
     } else if (remoteDatabase) {
       return await remoteDatabase.addWorker(worker)
     }
@@ -172,8 +183,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const updateWorker = async (id: number, worker: any) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.updateWorker(user?.email || 'anonymous', id, worker)
+      return localDatabase.updateWorker(userEmail, id, worker)
     } else if (remoteDatabase) {
       return await remoteDatabase.updateWorker(id, worker)
     }
@@ -181,16 +193,18 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const deleteWorker = async (id: number) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      localDatabase.deleteWorker(user?.email || 'anonymous', id)
+      localDatabase.deleteWorker(userEmail, id)
     } else if (remoteDatabase) {
       await remoteDatabase.deleteWorker(id)
     }
   }
 
   const getSites = async () => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.getSites(user?.email || 'anonymous')
+      return localDatabase.getSites(userEmail)
     } else if (remoteDatabase) {
       return await remoteDatabase.getSites()
     }
@@ -198,8 +212,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const addSite = async (site: any) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.addSite(user?.email || 'anonymous', site)
+      return localDatabase.addSite(userEmail, site)
     } else if (remoteDatabase) {
       return await remoteDatabase.addSite(site)
     }
@@ -207,8 +222,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const updateSite = async (id: number, site: any) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.updateSite(user?.email || 'anonymous', id, site)
+      return localDatabase.updateSite(userEmail, id, site)
     } else if (remoteDatabase) {
       return await remoteDatabase.updateSite(id, site)
     }
@@ -216,16 +232,18 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const deleteSite = async (id: number) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      localDatabase.deleteSite(user?.email || 'anonymous', id)
+      localDatabase.deleteSite(userEmail, id)
     } else if (remoteDatabase) {
       await remoteDatabase.deleteSite(id)
     }
   }
 
   const getTimeEntries = async () => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.getTimeEntries(user?.email || 'anonymous')
+      return localDatabase.getTimeEntries(userEmail)
     } else if (remoteDatabase) {
       return await remoteDatabase.getTimeEntries()
     }
@@ -233,8 +251,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const addTimeEntry = async (entry: any) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.addTimeEntry(user?.email || 'anonymous', entry)
+      return localDatabase.addTimeEntry(userEmail, entry)
     } else if (remoteDatabase) {
       return await remoteDatabase.addTimeEntry(entry)
     }
@@ -242,8 +261,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const updateTimeEntry = async (id: number, entry: any) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.updateTimeEntry(user?.email || 'anonymous', id, entry)
+      return localDatabase.updateTimeEntry(userEmail, id, entry)
     } else if (remoteDatabase) {
       return await remoteDatabase.updateTimeEntry(id, entry)
     }
@@ -251,16 +271,18 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const deleteTimeEntry = async (id: number) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      localDatabase.deleteTimeEntry(user?.email || 'anonymous', id)
+      localDatabase.deleteTimeEntry(userEmail, id)
     } else if (remoteDatabase) {
       await remoteDatabase.deleteTimeEntry(id)
     }
   }
 
   const getPayments = async () => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.getPayments(user?.email || 'anonymous')
+      return localDatabase.getPayments(userEmail)
     } else if (remoteDatabase) {
       return await remoteDatabase.getPayments()
     }
@@ -268,8 +290,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const addPayment = async (payment: any) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.addPayment(user?.email || 'anonymous', payment)
+      return localDatabase.addPayment(userEmail, payment)
     } else if (remoteDatabase) {
       return await remoteDatabase.addPayment(payment)
     }
@@ -277,8 +300,9 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const updatePayment = async (id: number, payment: any) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.updatePayment(user?.email || 'anonymous', id, payment)
+      return localDatabase.updatePayment(userEmail, id, payment)
     } else if (remoteDatabase) {
       return await remoteDatabase.updatePayment(id, payment)
     }
@@ -286,16 +310,18 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const deletePayment = async (id: number) => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      localDatabase.deletePayment(user?.email || 'anonymous', id)
+      localDatabase.deletePayment(userEmail, id)
     } else if (remoteDatabase) {
       await remoteDatabase.deletePayment(id)
     }
   }
 
   const getDashboardStats = async () => {
+    const userEmail = user?.email || 'anonymous'
     if (mode === 'local') {
-      return localDatabase.getDashboardStats(user?.email || 'anonymous')
+      return localDatabase.getDashboardStats(userEmail)
     } else if (remoteDatabase) {
       return await remoteDatabase.getDashboardStats()
     }
