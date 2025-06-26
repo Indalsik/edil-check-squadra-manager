@@ -25,7 +25,7 @@ export const LoginPage = () => {
   })
   
   const { login, register } = useAuth()
-  const { mode, setMode, setRemoteConfig, testConnection, connectionError } = useDatabase()
+  const { mode, setMode, setRemoteConfig, testRemoteConnection, connectionError } = useDatabase()
   const { theme, toggleTheme } = useTheme()
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -36,6 +36,14 @@ export const LoginPage = () => {
     try {
       const result = await login(loginData.email, loginData.password, mode, mode === 'remote' ? localRemoteConfig : undefined)
       if (result.success) {
+        // Salva le credenziali per il backup remoto
+        if (mode === 'local-with-backup') {
+          localStorage.setItem('edilcheck_credentials', JSON.stringify({ 
+            email: loginData.email, 
+            password: loginData.password 
+          }))
+          console.log('🔑 Credentials saved for remote backup')
+        }
         toast.success('Login effettuato con successo!')
       } else {
         const errorMessage = result.error || 'Credenziali non valide'
@@ -74,6 +82,14 @@ export const LoginPage = () => {
     try {
       const result = await register(registerData.email, registerData.password, mode, mode === 'remote' ? localRemoteConfig : undefined)
       if (result.success) {
+        // Salva le credenziali per il backup remoto
+        if (mode === 'local-with-backup') {
+          localStorage.setItem('edilcheck_credentials', JSON.stringify({ 
+            email: registerData.email, 
+            password: registerData.password 
+          }))
+          console.log('🔑 Credentials saved for remote backup')
+        }
         toast.success('Registrazione completata con successo!')
       } else {
         const errorMessage = result.error || 'Errore durante la registrazione'
@@ -95,7 +111,8 @@ export const LoginPage = () => {
   }
 
   const handleModeChange = (newMode: 'local' | 'remote') => {
-    setMode(newMode)
+    const dbMode = newMode === 'local' ? 'local-only' : 'local-with-backup'
+    setMode(dbMode)
     setLastError(null)
     setLoginData({ email: '', password: '' })
     setRegisterData({ email: '', password: '', confirmPassword: '' })
@@ -113,7 +130,7 @@ export const LoginPage = () => {
   }
 
   const handleTestConnection = async () => {
-    const connected = await testConnection()
+    const connected = await testRemoteConnection()
     if (connected) {
       toast.success('Connessione al server riuscita!')
     } else {
@@ -205,7 +222,7 @@ export const LoginPage = () => {
                 </div>
                 
                 {/* Credenziali di test per database remoto */}
-                {mode === 'remote' && (
+                {mode === 'local-with-backup' && (
                   <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                     <div className="flex items-center gap-2 text-blue-800 mb-2">
                       <Info className="h-4 w-4" />
@@ -269,7 +286,7 @@ export const LoginPage = () => {
                 </div>
                 
                 {/* Credenziali di test per registrazione */}
-                {mode === 'remote' && (
+                {mode === 'local-with-backup' && (
                   <div className="p-3 bg-green-50 rounded-lg border border-green-200">
                     <div className="flex items-center gap-2 text-green-800 mb-2">
                       <Info className="h-4 w-4" />
@@ -301,7 +318,7 @@ export const LoginPage = () => {
           <div className="space-y-4 pt-4 border-t mt-4">
             <Label className="text-sm font-medium">Database</Label>
             
-            <Select value={mode} onValueChange={handleModeChange}>
+            <Select value={mode === 'local-only' ? 'local' : 'remote'} onValueChange={handleModeChange}>
               <SelectTrigger className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -309,23 +326,23 @@ export const LoginPage = () => {
                 <SelectItem value="local">
                   <div className="flex items-center gap-2">
                     <Database className="h-4 w-4 text-blue-600" />
-                    <span>Database Locale</span>
+                    <span>Solo Locale</span>
                   </div>
                 </SelectItem>
                 <SelectItem value="remote">
                   <div className="flex items-center gap-2">
                     <Server className="h-4 w-4 text-orange-600" />
-                    <span>Database Remoto</span>
+                    <span>Locale + Backup Remoto</span>
                   </div>
                 </SelectItem>
               </SelectContent>
             </Select>
 
-            {mode === 'remote' && (
+            {mode === 'local-with-backup' && (
               <div className="space-y-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
                 <div className="flex items-center gap-2 text-orange-800">
                   <Settings className="h-4 w-4" />
-                  <span className="text-sm font-medium">Configurazione Server</span>
+                  <span className="text-sm font-medium">Server Backup (Porta 3002)</span>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-2">
@@ -370,7 +387,7 @@ export const LoginPage = () => {
                   </Button>
                 </div>
                 
-                {connectionError && (
+                {connectionError && !connectionError.includes('Using local database') && (
                   <Alert className="border-red-200 bg-red-50">
                     <AlertCircle className="h-4 w-4 text-red-600" />
                     <AlertDescription className="text-red-800 text-xs">
@@ -378,6 +395,13 @@ export const LoginPage = () => {
                     </AlertDescription>
                   </Alert>
                 )}
+
+                <div className="text-xs text-orange-700 bg-orange-100 p-2 rounded">
+                  <strong>📍 Dove sono le credenziali del server?</strong><br />
+                  • Le credenziali vengono salvate automaticamente nel localStorage quando fai login<br />
+                  • Vengono usate per autenticarsi al server sulla porta 3002<br />
+                  • Il server deve essere avviato separatamente con: <code>cd database-server && npm start</code>
+                </div>
               </div>
             )}
           </div>

@@ -56,14 +56,34 @@ export const useDatabase = () => {
 }
 
 export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
-  // Safely get user with fallback
-  let user = null
-  try {
-    const authContext = useAuth()
-    user = authContext?.user
-  } catch (error) {
-    console.log('Auth context not ready, using anonymous user')
-  }
+  // Usa un try-catch per gestire il caso in cui AuthContext non sia ancora pronto
+  const [user, setUser] = useState<any>(null)
+  const [authReady, setAuthReady] = useState(false)
+
+  // Prova a ottenere l'utente dall'AuthContext
+  useEffect(() => {
+    try {
+      const authContext = useAuth()
+      setUser(authContext.user)
+      setAuthReady(true)
+      console.log('✅ Auth context ready, user:', authContext.user?.email || 'anonymous')
+    } catch (error) {
+      // AuthContext non ancora pronto, usa utente dal localStorage
+      const savedUser = localStorage.getItem('edilcheck_user')
+      if (savedUser) {
+        try {
+          const parsedUser = JSON.parse(savedUser)
+          setUser(parsedUser)
+          console.log('🔄 Using saved user from localStorage:', parsedUser.email)
+        } catch (parseError) {
+          console.log('⚠️ Could not parse saved user, using anonymous')
+        }
+      } else {
+        console.log('⚠️ No saved user found, using anonymous')
+      }
+      setAuthReady(true)
+    }
+  }, [])
 
   const [mode, setMode] = useState<DatabaseMode>(() => {
     const saved = localStorage.getItem('edilcheck_database_mode')
@@ -140,34 +160,40 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
 
   // Backup manuale verso remoto
   const backupToRemote = async (): Promise<SyncResult> => {
-    if (!user?.email) {
-      throw new Error('Utente non autenticato per il backup')
+    const currentUser = user || { email: 'anonymous' }
+    
+    if (!currentUser.email || currentUser.email === 'anonymous') {
+      throw new Error('Utente non autenticato per il backup. Effettua il login prima.')
     }
     
     if (!isRemoteAvailable) {
       throw new Error('Server remoto non disponibile')
     }
     
-    console.log('💾 Starting backup to remote for user:', user.email)
-    return await databaseSync.backupToRemote(user.email)
+    console.log('💾 Starting backup to remote for user:', currentUser.email)
+    return await databaseSync.backupToRemote(currentUser.email)
   }
 
   // Ripristino da remoto
   const restoreFromRemote = async (): Promise<SyncResult> => {
-    if (!user?.email) {
-      throw new Error('Utente non autenticato per il ripristino')
+    const currentUser = user || { email: 'anonymous' }
+    
+    if (!currentUser.email || currentUser.email === 'anonymous') {
+      throw new Error('Utente non autenticato per il ripristino. Effettua il login prima.')
     }
     
     if (!isRemoteAvailable) {
       throw new Error('Server remoto non disponibile')
     }
     
-    console.log('📥 Starting restore from remote for user:', user.email)
-    return await databaseSync.restoreFromRemote(user.email)
+    console.log('📥 Starting restore from remote for user:', currentUser.email)
+    return await databaseSync.restoreFromRemote(currentUser.email)
   }
 
   // Inizializza all'avvio
   useEffect(() => {
+    if (!authReady) return
+
     const initDatabase = async () => {
       console.log(`🚀 Initializing local database in ${mode} mode`)
       
@@ -211,7 +237,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     initDatabase()
-  }, [mode, remoteConfig])
+  }, [mode, remoteConfig, authReady])
 
   // Listen to sync status changes
   useEffect(() => {
@@ -295,7 +321,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   }
 
   const updatePayment = async (id: number, payment: any) => {
-    return localDatabase.updatePayment(userEmail, id, payment)
+    return localDatabase.updatePayment(userEmail, payment)
   }
 
   const deletePayment = async (id: number) => {
