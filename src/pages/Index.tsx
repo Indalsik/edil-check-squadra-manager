@@ -12,14 +12,14 @@ import { DatabaseSyncDialog } from "@/components/DatabaseSyncDialog"
 import { useAuth } from "@/contexts/AuthContext"
 import { useDatabase } from "@/contexts/DatabaseContext"
 import { useTheme } from "@/contexts/ThemeContext"
-import { LogOut, Moon, Sun, User, Database, AlertCircle, RefreshCw, ArrowUpDown } from "lucide-react"
+import { LogOut, Moon, Sun, User, HardDrive, AlertCircle, Upload, Download } from "lucide-react"
 
 const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard")
   const [isInitialized, setIsInitialized] = useState(false)
   const [showDatabaseDialog, setShowDatabaseDialog] = useState(false)
   const { user, logout } = useAuth()
-  const { mode, isConnected, connectionError, syncStatus, syncDatabase } = useDatabase()
+  const { mode, isRemoteAvailable, connectionError, syncStatus, backupToRemote } = useDatabase()
   const { theme, toggleTheme } = useTheme()
 
   useEffect(() => {
@@ -37,12 +37,12 @@ const Index = () => {
     initDatabase()
   }, [user])
 
-  const handleQuickSync = async () => {
-    if (mode === 'remote' && isConnected) {
+  const handleQuickBackup = async () => {
+    if (mode === 'local-with-backup' && isRemoteAvailable) {
       try {
-        await syncDatabase()
+        await backupToRemote()
       } catch (error) {
-        console.error('Quick sync failed:', error)
+        console.error('Quick backup failed:', error)
       }
     }
   }
@@ -52,7 +52,7 @@ const Index = () => {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-edil-blue mx-auto"></div>
-          <p className="mt-4 text-lg">Inizializzazione database...</p>
+          <p className="mt-4 text-lg">Inizializzazione database locale...</p>
         </div>
       </div>
     )
@@ -91,20 +91,22 @@ const Index = () => {
     }
   }
 
-  const getSyncStatusColor = () => {
+  const getBackupStatusColor = () => {
+    if (mode === 'local-only') return 'text-gray-600'
     switch (syncStatus.status) {
       case 'success': return 'text-green-600'
-      case 'syncing': return 'text-blue-600'
+      case 'backing-up': return 'text-blue-600'
       case 'error': return 'text-red-600'
       default: return 'text-gray-600'
     }
   }
 
-  const getSyncStatusIcon = () => {
+  const getBackupStatusIcon = () => {
+    if (mode === 'local-only') return <HardDrive className="h-3 w-3" />
     switch (syncStatus.status) {
-      case 'syncing': return <RefreshCw className="h-3 w-3 animate-spin" />
+      case 'backing-up': return <Upload className="h-3 w-3 animate-pulse" />
       case 'error': return <AlertCircle className="h-3 w-3" />
-      default: return <ArrowUpDown className="h-3 w-3" />
+      default: return <Upload className="h-3 w-3" />
     }
   }
 
@@ -123,34 +125,34 @@ const Index = () => {
                 onClick={() => setShowDatabaseDialog(true)}
                 className="bg-white dark:bg-gray-800"
               >
-                <Database className="h-4 w-4 mr-2" />
+                <HardDrive className="h-4 w-4 mr-2" />
                 <span className="text-sm">
-                  {mode === 'local' ? 'Locale' : 'Ibrido'}
+                  {mode === 'local-only' ? 'Solo Locale' : 'Con Backup'}
                 </span>
-                <div className={`w-2 h-2 rounded-full ml-2 ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                <div className={`w-2 h-2 rounded-full ml-2 ${mode === 'local-only' ? 'bg-blue-500' : isRemoteAvailable ? 'bg-green-500' : 'bg-yellow-500'}`} />
               </Button>
 
-              {/* Quick Sync Button */}
-              {mode === 'remote' && isConnected && (
+              {/* Quick Backup Button */}
+              {mode === 'local-with-backup' && isRemoteAvailable && (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleQuickSync}
-                  disabled={syncStatus.status === 'syncing'}
+                  onClick={handleQuickBackup}
+                  disabled={syncStatus.status === 'backing-up'}
                   className="bg-white dark:bg-gray-800"
                 >
-                  <div className={`flex items-center gap-1 ${getSyncStatusColor()}`}>
-                    {getSyncStatusIcon()}
-                    <span className="text-xs">Sync</span>
+                  <div className={`flex items-center gap-1 ${getBackupStatusColor()}`}>
+                    {getBackupStatusIcon()}
+                    <span className="text-xs">Backup</span>
                   </div>
                 </Button>
               )}
 
               {/* Connection Warning */}
-              {connectionError && mode === 'remote' && (
+              {connectionError && mode === 'local-with-backup' && (
                 <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs">
                   <AlertCircle className="h-3 w-3" />
-                  <span>Solo locale</span>
+                  <span>Backup offline</span>
                 </div>
               )}
               

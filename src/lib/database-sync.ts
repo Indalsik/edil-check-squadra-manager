@@ -1,46 +1,46 @@
-// Sistema di sincronizzazione tra database locale e remoto
+// Sistema di backup e sincronizzazione per database local-first
 import { localDatabase } from './local-database'
 import { RemoteDatabase } from './remote-database'
 
 export interface SyncStatus {
-  isConnected: boolean
-  lastSync: string | null
+  isRemoteAvailable: boolean
+  lastBackup: string | null
+  lastRestore: string | null
   localCount: number
   remoteCount: number
-  conflicts: number
-  status: 'idle' | 'syncing' | 'error' | 'success'
+  status: 'idle' | 'backing-up' | 'restoring' | 'error' | 'success'
   error?: string
 }
 
 export interface SyncResult {
   success: boolean
   error?: string
-  localToRemote: number
-  remoteToLocal: number
+  itemsProcessed: number
   conflicts: number
+  operation: 'backup' | 'restore'
 }
 
 class DatabaseSync {
   private remoteDb: RemoteDatabase | null = null
   private syncStatus: SyncStatus = {
-    isConnected: false,
-    lastSync: null,
+    isRemoteAvailable: false,
+    lastBackup: null,
+    lastRestore: null,
     localCount: 0,
     remoteCount: 0,
-    conflicts: 0,
     status: 'idle'
   }
   private listeners: ((status: SyncStatus) => void)[] = []
 
   constructor() {
-    // Carica ultimo sync dal localStorage
-    const lastSync = localStorage.getItem('edilcheck_last_sync')
-    if (lastSync) {
-      this.syncStatus.lastSync = lastSync
-    }
+    // Carica timestamp dal localStorage
+    const lastBackup = localStorage.getItem('edilcheck_last_backup')
+    const lastRestore = localStorage.getItem('edilcheck_last_restore')
+    if (lastBackup) this.syncStatus.lastBackup = lastBackup
+    if (lastRestore) this.syncStatus.lastRestore = lastRestore
   }
 
-  // Configura database remoto
+  // Configura database remoto per backup
   setRemoteDatabase(remoteDb: RemoteDatabase): void {
     this.remoteDb = remoteDb
     this.testConnection()
@@ -49,20 +49,20 @@ class DatabaseSync {
   // Test connessione remota
   async testConnection(): Promise<boolean> {
     if (!this.remoteDb) {
-      this.updateStatus({ isConnected: false, error: 'Database remoto non configurato' })
+      this.updateStatus({ isRemoteAvailable: false, error: 'Database remoto non configurato' })
       return false
     }
 
     try {
       const connected = await this.remoteDb.testConnection()
       this.updateStatus({ 
-        isConnected: connected,
+        isRemoteAvailable: connected,
         error: connected ? undefined : 'Server remoto non raggiungibile'
       })
       return connected
     } catch (error: any) {
       this.updateStatus({ 
-        isConnected: false, 
+        isRemoteAvailable: false, 
         error: `Errore connessione: ${error.message}` 
       })
       return false
@@ -78,7 +78,6 @@ class DatabaseSync {
   // Aggiungi listener per status updates
   onStatusChange(listener: (status: SyncStatus) => void): () => void {
     this.listeners.push(listener)
-    // Ritorna funzione per rimuovere listener
     return () => {
       const index = this.listeners.indexOf(listener)
       if (index > -1) {
@@ -92,65 +91,123 @@ class DatabaseSync {
     return { ...this.syncStatus }
   }
 
-  // Sincronizzazione completa
-  async syncAll(userEmail: string): Promise<SyncResult> {
-    if (!this.remoteDb || !this.syncStatus.isConnected) {
-      throw new Error('Database remoto non disponibile')
+  // BACKUP: Copia tutti i dati locali sul server remoto
+  async backupToRemote(userEmail: string): Promise<SyncResult> {
+    if (!this.remoteDb || !this.syncStatus.isRemoteAvailable) {
+      throw new Error('Server remoto non disponibile per backup')
     }
 
-    this.updateStatus({ status: 'syncing', error: undefined })
+    this.updateStatus({ status: 'backing-up', error: undefined })
 
     try {
-      console.log('🔄 Starting full database sync...')
+      console.log('💾 Starting backup to remote server...')
       
-      let localToRemote = 0
-      let remoteToLocal = 0
+      let itemsProcessed = 0
       let conflicts = 0
 
-      // Sync Workers
-      const workersResult = await this.syncWorkers(userEmail)
-      localToRemote += workersResult.localToRemote
-      remoteToLocal += workersResult.remoteToLocal
-      conflicts += workersResult.conflicts
+      // Backup Workers
+      const workers = localDatabase.getWorkers(userEmail)
+      for (const worker of workers) {
+        try {
+          await this.remoteDb.addWorker(worker)
+          itemsProcessed++
+          console.log(`💾 Backed up worker: ${worker.name}`)
+        } catch (error: any) {
+          if (error.message.includes('già esiste') || error.message.includes('duplicate')) {
+            // Worker già esistente, prova aggiornamento
+            try {
+              const remoteWorkers = await this.remoteDb.getWorkers()
+              const existing = remoteWorkers.find(w => w.email === worker.email)
+              if (existing) {
+                await this.remoteDb.updateWorker(existing.id, worker)
+                itemsProcessed++
+                console.log(`💾 Updated worker on remote: ${worker.name}`)
+              }
+            } catch (updateError) {
+              conflicts++
+              console.warn(`⚠️ Conflict backing up worker: ${worker.name}`)
+            }
+          } else {
+            conflicts++
+            console.error(`❌ Failed to backup worker: ${worker.name}`, error)
+          }
+        }
+      }
 
-      // Sync Sites
-      const sitesResult = await this.syncSites(userEmail)
-      localToRemote += sitesResult.localToRemote
-      remoteToLocal += sitesResult.remoteToLocal
-      conflicts += sitesResult.conflicts
+      // Backup Sites
+      const sites = localDatabase.getSites(userEmail)
+      for (const site of sites) {
+        try {
+          await this.remoteDb.addSite(site)
+          itemsProcessed++
+          console.log(`💾 Backed up site: ${site.name}`)
+        } catch (error: any) {
+          if (error.message.includes('già esiste') || error.message.includes('duplicate')) {
+            try {
+              const remoteSites = await this.remoteDb.getSites()
+              const existing = remoteSites.find(s => s.name === site.name && s.address === site.address)
+              if (existing) {
+                await this.remoteDb.updateSite(existing.id, site)
+                itemsProcessed++
+                console.log(`💾 Updated site on remote: ${site.name}`)
+              }
+            } catch (updateError) {
+              conflicts++
+              console.warn(`⚠️ Conflict backing up site: ${site.name}`)
+            }
+          } else {
+            conflicts++
+            console.error(`❌ Failed to backup site: ${site.name}`, error)
+          }
+        }
+      }
 
-      // Sync Time Entries
-      const timeEntriesResult = await this.syncTimeEntries(userEmail)
-      localToRemote += timeEntriesResult.localToRemote
-      remoteToLocal += timeEntriesResult.remoteToLocal
-      conflicts += timeEntriesResult.conflicts
+      // Backup Time Entries
+      const timeEntries = localDatabase.getTimeEntries(userEmail)
+      for (const entry of timeEntries) {
+        try {
+          await this.remoteDb.addTimeEntry(entry)
+          itemsProcessed++
+          console.log(`💾 Backed up time entry: ${entry.date}`)
+        } catch (error: any) {
+          conflicts++
+          console.warn(`⚠️ Conflict backing up time entry: ${entry.date}`)
+        }
+      }
 
-      // Sync Payments
-      const paymentsResult = await this.syncPayments(userEmail)
-      localToRemote += paymentsResult.localToRemote
-      remoteToLocal += paymentsResult.remoteToLocal
-      conflicts += paymentsResult.conflicts
+      // Backup Payments
+      const payments = localDatabase.getPayments(userEmail)
+      for (const payment of payments) {
+        try {
+          await this.remoteDb.addPayment(payment)
+          itemsProcessed++
+          console.log(`💾 Backed up payment: ${payment.week}`)
+        } catch (error: any) {
+          conflicts++
+          console.warn(`⚠️ Conflict backing up payment: ${payment.week}`)
+        }
+      }
 
-      // Aggiorna timestamp ultimo sync
+      // Aggiorna timestamp backup
       const now = new Date().toISOString()
-      localStorage.setItem('edilcheck_last_sync', now)
+      localStorage.setItem('edilcheck_last_backup', now)
 
       this.updateStatus({ 
         status: 'success',
-        lastSync: now,
-        conflicts
+        lastBackup: now,
+        localCount: workers.length + sites.length + timeEntries.length + payments.length
       })
 
-      console.log('✅ Sync completed successfully')
+      console.log('✅ Backup completed successfully')
       return {
         success: true,
-        localToRemote,
-        remoteToLocal,
-        conflicts
+        itemsProcessed,
+        conflicts,
+        operation: 'backup'
       }
 
     } catch (error: any) {
-      console.error('❌ Sync failed:', error)
+      console.error('❌ Backup failed:', error)
       this.updateStatus({ 
         status: 'error', 
         error: error.message 
@@ -158,293 +215,131 @@ class DatabaseSync {
       return {
         success: false,
         error: error.message,
-        localToRemote: 0,
-        remoteToLocal: 0,
-        conflicts: 0
+        itemsProcessed: 0,
+        conflicts: 0,
+        operation: 'backup'
       }
     }
   }
 
-  // Sync Workers
-  private async syncWorkers(userEmail: string): Promise<SyncResult> {
-    console.log('🔄 Syncing workers...')
-    
-    const localWorkers = localDatabase.getWorkers(userEmail)
-    const remoteWorkers = await this.remoteDb!.getWorkers()
-
-    let localToRemote = 0
-    let remoteToLocal = 0
-    let conflicts = 0
-
-    // Crea mappa per confronto
-    const localMap = new Map(localWorkers.map(w => [w.email, w]))
-    const remoteMap = new Map(remoteWorkers.map(w => [w.email, w]))
-
-    // Sync da locale a remoto (nuovi o più recenti)
-    for (const localWorker of localWorkers) {
-      const remoteWorker = remoteMap.get(localWorker.email)
-      
-      if (!remoteWorker) {
-        // Nuovo worker locale -> crea su remoto
-        try {
-          await this.remoteDb!.addWorker(localWorker)
-          localToRemote++
-          console.log(`➡️ Created worker on remote: ${localWorker.name}`)
-        } catch (error) {
-          console.error(`❌ Failed to create worker on remote: ${localWorker.name}`, error)
-        }
-      } else if (new Date(localWorker.created_at) > new Date(remoteWorker.created_at)) {
-        // Worker locale più recente -> aggiorna remoto
-        try {
-          await this.remoteDb!.updateWorker(remoteWorker.id, localWorker)
-          localToRemote++
-          console.log(`➡️ Updated worker on remote: ${localWorker.name}`)
-        } catch (error) {
-          console.error(`❌ Failed to update worker on remote: ${localWorker.name}`, error)
-        }
-      }
+  // RESTORE: Scarica tutti i dati dal server remoto e li mette nel database locale
+  async restoreFromRemote(userEmail: string): Promise<SyncResult> {
+    if (!this.remoteDb || !this.syncStatus.isRemoteAvailable) {
+      throw new Error('Server remoto non disponibile per ripristino')
     }
 
-    // Sync da remoto a locale (nuovi o più recenti)
-    for (const remoteWorker of remoteWorkers) {
-      const localWorker = localMap.get(remoteWorker.email)
-      
-      if (!localWorker) {
-        // Nuovo worker remoto -> crea locale
-        try {
-          localDatabase.addWorker(userEmail, remoteWorker)
-          remoteToLocal++
-          console.log(`⬅️ Created worker locally: ${remoteWorker.name}`)
-        } catch (error) {
-          console.error(`❌ Failed to create worker locally: ${remoteWorker.name}`, error)
-        }
-      } else if (new Date(remoteWorker.created_at) > new Date(localWorker.created_at)) {
-        // Worker remoto più recente -> aggiorna locale
-        try {
-          localDatabase.updateWorker(userEmail, localWorker.id, remoteWorker)
-          remoteToLocal++
-          console.log(`⬅️ Updated worker locally: ${remoteWorker.name}`)
-        } catch (error) {
-          console.error(`❌ Failed to update worker locally: ${remoteWorker.name}`, error)
-        }
-      }
-    }
-
-    return { success: true, localToRemote, remoteToLocal, conflicts }
-  }
-
-  // Sync Sites
-  private async syncSites(userEmail: string): Promise<SyncResult> {
-    console.log('🔄 Syncing sites...')
-    
-    const localSites = localDatabase.getSites(userEmail)
-    const remoteSites = await this.remoteDb!.getSites()
-
-    let localToRemote = 0
-    let remoteToLocal = 0
-    let conflicts = 0
-
-    // Crea mappa per confronto (usando nome + indirizzo come chiave unica)
-    const localMap = new Map(localSites.map(s => [`${s.name}_${s.address}`, s]))
-    const remoteMap = new Map(remoteSites.map(s => [`${s.name}_${s.address}`, s]))
-
-    // Sync da locale a remoto
-    for (const localSite of localSites) {
-      const key = `${localSite.name}_${localSite.address}`
-      const remoteSite = remoteMap.get(key)
-      
-      if (!remoteSite) {
-        try {
-          await this.remoteDb!.addSite(localSite)
-          localToRemote++
-          console.log(`➡️ Created site on remote: ${localSite.name}`)
-        } catch (error) {
-          console.error(`❌ Failed to create site on remote: ${localSite.name}`, error)
-        }
-      } else if (new Date(localSite.created_at) > new Date(remoteSite.created_at)) {
-        try {
-          await this.remoteDb!.updateSite(remoteSite.id, localSite)
-          localToRemote++
-          console.log(`➡️ Updated site on remote: ${localSite.name}`)
-        } catch (error) {
-          console.error(`❌ Failed to update site on remote: ${localSite.name}`, error)
-        }
-      }
-    }
-
-    // Sync da remoto a locale
-    for (const remoteSite of remoteSites) {
-      const key = `${remoteSite.name}_${remoteSite.address}`
-      const localSite = localMap.get(key)
-      
-      if (!localSite) {
-        try {
-          localDatabase.addSite(userEmail, remoteSite)
-          remoteToLocal++
-          console.log(`⬅️ Created site locally: ${remoteSite.name}`)
-        } catch (error) {
-          console.error(`❌ Failed to create site locally: ${remoteSite.name}`, error)
-        }
-      } else if (new Date(remoteSite.created_at) > new Date(localSite.created_at)) {
-        try {
-          localDatabase.updateSite(userEmail, localSite.id, remoteSite)
-          remoteToLocal++
-          console.log(`⬅️ Updated site locally: ${remoteSite.name}`)
-        } catch (error) {
-          console.error(`❌ Failed to update site locally: ${remoteSite.name}`, error)
-        }
-      }
-    }
-
-    return { success: true, localToRemote, remoteToLocal, conflicts }
-  }
-
-  // Sync Time Entries
-  private async syncTimeEntries(userEmail: string): Promise<SyncResult> {
-    console.log('🔄 Syncing time entries...')
-    
-    const localEntries = localDatabase.getTimeEntries(userEmail)
-    const remoteEntries = await this.remoteDb!.getTimeEntries()
-
-    let localToRemote = 0
-    let remoteToLocal = 0
-    let conflicts = 0
-
-    // Crea mappa per confronto (usando workerId + date + startTime come chiave unica)
-    const localMap = new Map(localEntries.map(e => [`${e.workerId}_${e.date}_${e.startTime}`, e]))
-    const remoteMap = new Map(remoteEntries.map(e => [`${e.workerId}_${e.date}_${e.startTime}`, e]))
-
-    // Sync da locale a remoto
-    for (const localEntry of localEntries) {
-      const key = `${localEntry.workerId}_${localEntry.date}_${localEntry.startTime}`
-      const remoteEntry = remoteMap.get(key)
-      
-      if (!remoteEntry) {
-        try {
-          await this.remoteDb!.addTimeEntry(localEntry)
-          localToRemote++
-          console.log(`➡️ Created time entry on remote: ${localEntry.date}`)
-        } catch (error) {
-          console.error(`❌ Failed to create time entry on remote: ${localEntry.date}`, error)
-        }
-      } else if (new Date(localEntry.created_at) > new Date(remoteEntry.created_at)) {
-        try {
-          await this.remoteDb!.updateTimeEntry(remoteEntry.id, localEntry)
-          localToRemote++
-          console.log(`➡️ Updated time entry on remote: ${localEntry.date}`)
-        } catch (error) {
-          console.error(`❌ Failed to update time entry on remote: ${localEntry.date}`, error)
-        }
-      }
-    }
-
-    // Sync da remoto a locale
-    for (const remoteEntry of remoteEntries) {
-      const key = `${remoteEntry.workerId}_${remoteEntry.date}_${remoteEntry.startTime}`
-      const localEntry = localMap.get(key)
-      
-      if (!localEntry) {
-        try {
-          localDatabase.addTimeEntry(userEmail, remoteEntry)
-          remoteToLocal++
-          console.log(`⬅️ Created time entry locally: ${remoteEntry.date}`)
-        } catch (error) {
-          console.error(`❌ Failed to create time entry locally: ${remoteEntry.date}`, error)
-        }
-      } else if (new Date(remoteEntry.created_at) > new Date(localEntry.created_at)) {
-        try {
-          localDatabase.updateTimeEntry(userEmail, localEntry.id, remoteEntry)
-          remoteToLocal++
-          console.log(`⬅️ Updated time entry locally: ${remoteEntry.date}`)
-        } catch (error) {
-          console.error(`❌ Failed to update time entry locally: ${remoteEntry.date}`, error)
-        }
-      }
-    }
-
-    return { success: true, localToRemote, remoteToLocal, conflicts }
-  }
-
-  // Sync Payments
-  private async syncPayments(userEmail: string): Promise<SyncResult> {
-    console.log('🔄 Syncing payments...')
-    
-    const localPayments = localDatabase.getPayments(userEmail)
-    const remotePayments = await this.remoteDb!.getPayments()
-
-    let localToRemote = 0
-    let remoteToLocal = 0
-    let conflicts = 0
-
-    // Crea mappa per confronto (usando workerId + week come chiave unica)
-    const localMap = new Map(localPayments.map(p => [`${p.workerId}_${p.week}`, p]))
-    const remoteMap = new Map(remotePayments.map(p => [`${p.workerId}_${p.week}`, p]))
-
-    // Sync da locale a remoto
-    for (const localPayment of localPayments) {
-      const key = `${localPayment.workerId}_${localPayment.week}`
-      const remotePayment = remoteMap.get(key)
-      
-      if (!remotePayment) {
-        try {
-          await this.remoteDb!.addPayment(localPayment)
-          localToRemote++
-          console.log(`➡️ Created payment on remote: ${localPayment.week}`)
-        } catch (error) {
-          console.error(`❌ Failed to create payment on remote: ${localPayment.week}`, error)
-        }
-      } else if (new Date(localPayment.created_at) > new Date(remotePayment.created_at)) {
-        try {
-          await this.remoteDb!.updatePayment(remotePayment.id, localPayment)
-          localToRemote++
-          console.log(`➡️ Updated payment on remote: ${localPayment.week}`)
-        } catch (error) {
-          console.error(`❌ Failed to update payment on remote: ${localPayment.week}`, error)
-        }
-      }
-    }
-
-    // Sync da remoto a locale
-    for (const remotePayment of remotePayments) {
-      const key = `${remotePayment.workerId}_${remotePayment.week}`
-      const localPayment = localMap.get(key)
-      
-      if (!localPayment) {
-        try {
-          localDatabase.addPayment(userEmail, remotePayment)
-          remoteToLocal++
-          console.log(`⬅️ Created payment locally: ${remotePayment.week}`)
-        } catch (error) {
-          console.error(`❌ Failed to create payment locally: ${remotePayment.week}`, error)
-        }
-      } else if (new Date(remotePayment.created_at) > new Date(localPayment.created_at)) {
-        try {
-          localDatabase.updatePayment(userEmail, localPayment.id, remotePayment)
-          remoteToLocal++
-          console.log(`⬅️ Updated payment locally: ${remotePayment.week}`)
-        } catch (error) {
-          console.error(`❌ Failed to update payment locally: ${remotePayment.week}`, error)
-        }
-      }
-    }
-
-    return { success: true, localToRemote, remoteToLocal, conflicts }
-  }
-
-  // Sync automatico all'avvio
-  async autoSync(userEmail: string): Promise<void> {
-    if (!this.remoteDb) return
+    this.updateStatus({ status: 'restoring', error: undefined })
 
     try {
-      const connected = await this.testConnection()
-      if (connected) {
-        console.log('🔄 Starting auto-sync...')
-        await this.syncAll(userEmail)
-      } else {
-        console.log('⚠️ Auto-sync skipped: remote database not available')
+      console.log('📥 Starting restore from remote server...')
+      
+      let itemsProcessed = 0
+      let conflicts = 0
+
+      // Restore Workers
+      const remoteWorkers = await this.remoteDb.getWorkers()
+      for (const worker of remoteWorkers) {
+        try {
+          localDatabase.addWorker(userEmail, worker)
+          itemsProcessed++
+          console.log(`📥 Restored worker: ${worker.name}`)
+        } catch (error: any) {
+          // Worker già esistente, prova aggiornamento
+          try {
+            const localWorkers = localDatabase.getWorkers(userEmail)
+            const existing = localWorkers.find(w => w.email === worker.email)
+            if (existing) {
+              localDatabase.updateWorker(userEmail, existing.id, worker)
+              itemsProcessed++
+              console.log(`📥 Updated local worker: ${worker.name}`)
+            }
+          } catch (updateError) {
+            conflicts++
+            console.warn(`⚠️ Conflict restoring worker: ${worker.name}`)
+          }
+        }
       }
-    } catch (error) {
-      console.error('❌ Auto-sync failed:', error)
+
+      // Restore Sites
+      const remoteSites = await this.remoteDb.getSites()
+      for (const site of remoteSites) {
+        try {
+          localDatabase.addSite(userEmail, site)
+          itemsProcessed++
+          console.log(`📥 Restored site: ${site.name}`)
+        } catch (error: any) {
+          try {
+            const localSites = localDatabase.getSites(userEmail)
+            const existing = localSites.find(s => s.name === site.name && s.address === site.address)
+            if (existing) {
+              localDatabase.updateSite(userEmail, existing.id, site)
+              itemsProcessed++
+              console.log(`📥 Updated local site: ${site.name}`)
+            }
+          } catch (updateError) {
+            conflicts++
+            console.warn(`⚠️ Conflict restoring site: ${site.name}`)
+          }
+        }
+      }
+
+      // Restore Time Entries
+      const remoteTimeEntries = await this.remoteDb.getTimeEntries()
+      for (const entry of remoteTimeEntries) {
+        try {
+          localDatabase.addTimeEntry(userEmail, entry)
+          itemsProcessed++
+          console.log(`📥 Restored time entry: ${entry.date}`)
+        } catch (error: any) {
+          conflicts++
+          console.warn(`⚠️ Conflict restoring time entry: ${entry.date}`)
+        }
+      }
+
+      // Restore Payments
+      const remotePayments = await this.remoteDb.getPayments()
+      for (const payment of remotePayments) {
+        try {
+          localDatabase.addPayment(userEmail, payment)
+          itemsProcessed++
+          console.log(`📥 Restored payment: ${payment.week}`)
+        } catch (error: any) {
+          conflicts++
+          console.warn(`⚠️ Conflict restoring payment: ${payment.week}`)
+        }
+      }
+
+      // Aggiorna timestamp restore
+      const now = new Date().toISOString()
+      localStorage.setItem('edilcheck_last_restore', now)
+
+      this.updateStatus({ 
+        status: 'success',
+        lastRestore: now,
+        remoteCount: remoteWorkers.length + remoteSites.length + remoteTimeEntries.length + remotePayments.length
+      })
+
+      console.log('✅ Restore completed successfully')
+      return {
+        success: true,
+        itemsProcessed,
+        conflicts,
+        operation: 'restore'
+      }
+
+    } catch (error: any) {
+      console.error('❌ Restore failed:', error)
+      this.updateStatus({ 
+        status: 'error', 
+        error: error.message 
+      })
+      return {
+        success: false,
+        error: error.message,
+        itemsProcessed: 0,
+        conflicts: 0,
+        operation: 'restore'
+      }
     }
   }
 }
