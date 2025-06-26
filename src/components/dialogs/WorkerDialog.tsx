@@ -11,7 +11,7 @@ interface WorkerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   worker?: Worker | null
-  onSave: (worker: Omit<Worker, 'id'> | Worker) => void
+  onSave: (worker: Omit<Worker, 'id' | 'created_at'> | Worker) => void
 }
 
 export function WorkerDialog({ open, onOpenChange, worker, onSave }: WorkerDialogProps) {

@@ -11,7 +11,7 @@ interface SiteDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   site?: Site | null
-  onSave: (site: Omit<Site, 'id'> | Site) => void
+  onSave: (site: Omit<Site, 'id' | 'created_at'> | Site) => void
 }
 
 export function SiteDialog({ open, onOpenChange, site, onSave }: SiteDialogProps) {
