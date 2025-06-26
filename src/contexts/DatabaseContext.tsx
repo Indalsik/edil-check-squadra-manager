@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { localDatabase } from '@/lib/local-database'
 import { RemoteDatabase, RemoteConfig } from '@/lib/remote-database'
@@ -106,33 +105,11 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       return true
     }
 
-    if (!remoteDatabase) {
-      // Create remote database instance if not exists
-      const newRemoteDb = new RemoteDatabase(remoteConfig)
-      setRemoteDatabase(newRemoteDb)
-      
-      try {
-        const connected = await newRemoteDb.testConnection()
-        setIsConnected(connected)
-        if (connected) {
-          setConnectionError(null)
-          console.log('✅ Remote database connected')
-        } else {
-          setConnectionError('Impossibile connettersi al server remoto')
-          console.log('❌ Remote database connection failed')
-        }
-        return connected
-      } catch (error: any) {
-        setIsConnected(false)
-        setConnectionError(error.message)
-        console.error('❌ Remote database error:', error)
-        return false
-      }
-    }
-
     try {
-      const connected = await remoteDatabase.testConnection()
+      const testDb = remoteDatabase || new RemoteDatabase(remoteConfig)
+      const connected = await testDb.testConnection()
       setIsConnected(connected)
+      
       if (connected) {
         setConnectionError(null)
         console.log('✅ Remote database connected')
@@ -161,14 +138,12 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
         console.log('✅ Local database ready')
       } else {
         // Remote mode
-        if (!remoteDatabase) {
-          const newRemoteDb = new RemoteDatabase(remoteConfig)
-          setRemoteDatabase(newRemoteDb)
-        }
+        const newRemoteDb = new RemoteDatabase(remoteConfig)
+        setRemoteDatabase(newRemoteDb)
         
-        // Test connection but don't block initialization
+        // Test connection
         try {
-          const connected = await (remoteDatabase || new RemoteDatabase(remoteConfig)).testConnection()
+          const connected = await newRemoteDb.testConnection()
           setIsConnected(connected)
           if (connected) {
             setConnectionError(null)
@@ -200,6 +175,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
         try {
           const { email, password } = JSON.parse(credentials)
           remoteDatabase.setCredentials(email, password)
+          console.log('🔑 Remote credentials updated for user:', email)
         } catch (error) {
           console.error('Error setting remote credentials:', error)
         }

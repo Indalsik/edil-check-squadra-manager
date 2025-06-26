@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { RemoteDatabase } from '@/lib/remote-database'
 
@@ -68,7 +67,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       } else if (remoteConfig) {
         // Autenticazione remota
+        console.log('🌐 Attempting remote login with config:', remoteConfig)
         const remoteDb = new RemoteDatabase(remoteConfig)
+        
+        // Prima testa la connessione
+        const isConnected = await remoteDb.testConnection()
+        if (!isConnected) {
+          return { success: false, error: 'Impossibile connettersi al server remoto. Verifica che sia avviato e raggiungibile.' }
+        }
+        
         const result = await remoteDb.login(email, password)
         
         if (result.success && result.user) {
@@ -121,7 +128,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return { success: true }
       } else if (remoteConfig) {
         // Registrazione remota
+        console.log('🌐 Attempting remote registration with config:', remoteConfig)
         const remoteDb = new RemoteDatabase(remoteConfig)
+        
+        // Prima testa la connessione
+        const isConnected = await remoteDb.testConnection()
+        if (!isConnected) {
+          return { success: false, error: 'Impossibile connettersi al server remoto. Verifica che sia avviato e raggiungibile.' }
+        }
+        
         const result = await remoteDb.register(email, password)
         
         if (result.success && result.user) {

@@ -12,74 +12,21 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-// CORS configuration - MIGLIORATA per essere più permissiva in sviluppo
+// CORS configuration - molto permissiva per sviluppo
 app.use(cors({
-  origin: function (origin, callback) {
-    // In sviluppo, permetti TUTTE le origini
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('🌐 CORS: Allowing all origins in development mode');
-      return callback(null, true);
-    }
-    
-    // Permetti richieste senza origin (es. app mobile, Postman)
-    if (!origin) return callback(null, true);
-    
-    // Lista di origini permesse per produzione
-    const allowedOrigins = [
-      'http://localhost:8080',
-      'http://127.0.0.1:8080',
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
-      // Permetti tutti i domini webcontainer
-      /^https:\/\/.*\.webcontainer-api\.io$/,
-      /^https:\/\/.*\.local-credentialless\.webcontainer-api\.io$/,
-      /^https:\/\/.*\.stackblitz\.io$/,
-      /^https:\/\/.*\.bolt\.new$/,
-      // Permetti indirizzi IP locali
-      /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
-      /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
-      /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d+\.\d+:\d+$/
-    ];
-    
-    // Controlla se l'origin è permesso
-    const isAllowed = allowedOrigins.some(allowedOrigin => {
-      if (typeof allowedOrigin === 'string') {
-        return origin === allowedOrigin;
-      } else {
-        return allowedOrigin.test(origin);
-      }
-    });
-    
-    if (isAllowed) {
-      console.log('✅ CORS: Origin allowed:', origin);
-      callback(null, true);
-    } else {
-      console.log('⚠️ CORS: Origin not in whitelist but allowing anyway in development:', origin);
-      callback(null, true); // Per sviluppo, permetti comunque
-    }
-  },
+  origin: true, // Permetti tutte le origini
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
-    'X-Requested-With',
-    'Accept',
-    'Origin',
-    'Access-Control-Request-Method',
-    'Access-Control-Request-Headers',
-    'X-User-Email',
-    'X-User-Password'
-  ],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Email', 'X-User-Password'],
   exposedHeaders: ['Authorization'],
-  maxAge: 86400 // 24 ore
+  maxAge: 86400
 }));
 
 // Middleware per gestire preflight requests
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS,PATCH');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-User-Email, X-User-Password');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-User-Email, X-User-Password');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.sendStatus(200);
 });
@@ -207,13 +154,16 @@ try {
   process.exit(1);
 }
 
-// Auth middleware - ora usa email e password negli headers
+// Auth middleware - usa email e password negli headers
 const authenticateUser = (req, res, next) => {
   try {
     const email = req.headers['x-user-email'];
     const password = req.headers['x-user-password'];
 
+    console.log('🔐 Auth attempt:', { email: email ? 'provided' : 'missing', password: password ? 'provided' : 'missing' });
+
     if (!email || !password) {
+      console.log('❌ Missing credentials');
       return res.status(401).json({ error: 'Email e password richiesti negli headers' });
     }
 
@@ -222,15 +172,18 @@ const authenticateUser = (req, res, next) => {
     const user = stmt.get([email]);
     
     if (!user) {
+      console.log('❌ User not found:', email);
       return res.status(401).json({ error: 'Utente non trovato' });
     }
 
     // Verifica password
     const validPassword = bcrypt.compareSync(password, user.password);
     if (!validPassword) {
+      console.log('❌ Invalid password for:', email);
       return res.status(401).json({ error: 'Password non valida' });
     }
 
+    console.log('✅ Authentication successful for:', email);
     req.user = { userId: user.id, email: user.email };
     next();
   } catch (error) {
@@ -254,23 +207,31 @@ app.get('/health', (req, res) => {
 // Auth routes
 app.post('/auth/register', async (req, res) => {
   try {
+    console.log('📝 Registration attempt:', req.body);
     const { email, password } = req.body;
     
     if (!email || !password) {
+      console.log('❌ Missing email or password');
       return res.status(400).json({ error: 'Email e password sono richiesti' });
     }
     
+    // Controlla se l'utente esiste già
     const stmt = db.prepare('SELECT id FROM users WHERE email = ?');
     const existingUser = stmt.get([email]);
     if (existingUser) {
+      console.log('❌ User already exists:', email);
       return res.status(400).json({ error: 'Email già registrata' });
     }
 
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Crea utente
     const insertStmt = db.prepare('INSERT INTO users (email, password) VALUES (?, ?)');
     const result = insertStmt.run([email, hashedPassword]);
     saveDatabase();
     
+    console.log('✅ User registered successfully:', email);
     res.json({ 
       success: true,
       message: 'Registrazione completata',
@@ -284,24 +245,31 @@ app.post('/auth/register', async (req, res) => {
 
 app.post('/auth/login', async (req, res) => {
   try {
+    console.log('🔐 Login attempt:', req.body);
     const { email, password } = req.body;
     
     if (!email || !password) {
+      console.log('❌ Missing email or password');
       return res.status(400).json({ error: 'Email e password sono richiesti' });
     }
     
+    // Trova utente
     const stmt = db.prepare('SELECT * FROM users WHERE email = ?');
     const user = stmt.get([email]);
     
     if (!user || !user.password) {
+      console.log('❌ User not found or invalid password field:', email);
       return res.status(400).json({ error: 'Credenziali non valide' });
     }
 
+    // Verifica password
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) {
+      console.log('❌ Invalid password for:', email);
       return res.status(400).json({ error: 'Credenziali non valide' });
     }
 
+    console.log('✅ Login successful for:', email);
     res.json({ 
       success: true,
       message: 'Login effettuato',
@@ -328,6 +296,7 @@ app.get('/workers', authenticateUser, (req, res) => {
     const workers = stmt.all([req.user.userId]);
     res.json(workers);
   } catch (error) {
+    console.error('Get workers error:', error);
     res.status(500).json({ error: 'Errore nel recupero operai' });
   }
 });
@@ -346,6 +315,7 @@ app.post('/workers', authenticateUser, (req, res) => {
     const worker = getStmt.get([result.lastID]);
     res.json(worker);
   } catch (error) {
+    console.error('Create worker error:', error);
     res.status(500).json({ error: 'Errore nella creazione operaio' });
   }
 });
@@ -367,6 +337,7 @@ app.put('/workers/:id', authenticateUser, (req, res) => {
     const worker = getStmt.get([id, req.user.userId]);
     res.json(worker);
   } catch (error) {
+    console.error('Update worker error:', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento operaio' });
   }
 });
@@ -379,6 +350,7 @@ app.delete('/workers/:id', authenticateUser, (req, res) => {
     saveDatabase();
     res.json({ message: 'Operaio eliminato' });
   } catch (error) {
+    console.error('Delete worker error:', error);
     res.status(500).json({ error: 'Errore nell\'eliminazione operaio' });
   }
 });
@@ -390,6 +362,7 @@ app.get('/sites', authenticateUser, (req, res) => {
     const sites = stmt.all([req.user.userId]);
     res.json(sites);
   } catch (error) {
+    console.error('Get sites error:', error);
     res.status(500).json({ error: 'Errore nel recupero cantieri' });
   }
 });
@@ -408,6 +381,7 @@ app.post('/sites', authenticateUser, (req, res) => {
     const site = getStmt.get([result.lastID]);
     res.json(site);
   } catch (error) {
+    console.error('Create site error:', error);
     res.status(500).json({ error: 'Errore nella creazione cantiere' });
   }
 });
@@ -429,6 +403,7 @@ app.put('/sites/:id', authenticateUser, (req, res) => {
     const site = getStmt.get([id, req.user.userId]);
     res.json(site);
   } catch (error) {
+    console.error('Update site error:', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento cantiere' });
   }
 });
@@ -441,6 +416,7 @@ app.delete('/sites/:id', authenticateUser, (req, res) => {
     saveDatabase();
     res.json({ message: 'Cantiere eliminato' });
   } catch (error) {
+    console.error('Delete site error:', error);
     res.status(500).json({ error: 'Errore nell\'eliminazione cantiere' });
   }
 });
@@ -459,6 +435,7 @@ app.get('/time-entries', authenticateUser, (req, res) => {
     const entries = stmt.all([req.user.userId]);
     res.json(entries);
   } catch (error) {
+    console.error('Get time entries error:', error);
     res.status(500).json({ error: 'Errore nel recupero ore' });
   }
 });
@@ -483,6 +460,7 @@ app.post('/time-entries', authenticateUser, (req, res) => {
     const entry = getStmt.get([result.lastID]);
     res.json(entry);
   } catch (error) {
+    console.error('Create time entry error:', error);
     res.status(500).json({ error: 'Errore nella registrazione ore' });
   }
 });
@@ -510,6 +488,7 @@ app.put('/time-entries/:id', authenticateUser, (req, res) => {
     const entry = getStmt.get([id, req.user.userId]);
     res.json(entry);
   } catch (error) {
+    console.error('Update time entry error:', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento ore' });
   }
 });
@@ -522,6 +501,7 @@ app.delete('/time-entries/:id', authenticateUser, (req, res) => {
     saveDatabase();
     res.json({ message: 'Registrazione ore eliminata' });
   } catch (error) {
+    console.error('Delete time entry error:', error);
     res.status(500).json({ error: 'Errore nell\'eliminazione ore' });
   }
 });
@@ -539,6 +519,7 @@ app.get('/payments', authenticateUser, (req, res) => {
     const payments = stmt.all([req.user.userId]);
     res.json(payments);
   } catch (error) {
+    console.error('Get payments error:', error);
     res.status(500).json({ error: 'Errore nel recupero pagamenti' });
   }
 });
@@ -562,6 +543,7 @@ app.post('/payments', authenticateUser, (req, res) => {
     const payment = getStmt.get([result.lastID]);
     res.json(payment);
   } catch (error) {
+    console.error('Create payment error:', error);
     res.status(500).json({ error: 'Errore nella creazione pagamento' });
   }
 });
@@ -588,6 +570,7 @@ app.put('/payments/:id', authenticateUser, (req, res) => {
     const payment = getStmt.get([id, req.user.userId]);
     res.json(payment);
   } catch (error) {
+    console.error('Update payment error:', error);
     res.status(500).json({ error: 'Errore nell\'aggiornamento pagamento' });
   }
 });
@@ -600,6 +583,7 @@ app.delete('/payments/:id', authenticateUser, (req, res) => {
     saveDatabase();
     res.json({ message: 'Pagamento eliminato' });
   } catch (error) {
+    console.error('Delete payment error:', error);
     res.status(500).json({ error: 'Errore nell\'eliminazione pagamento' });
   }
 });
@@ -652,8 +636,15 @@ app.get('/sites/:siteId/workers', authenticateUser, (req, res) => {
     const workers = stmt.all([siteId, req.user.userId]);
     res.json(workers);
   } catch (error) {
+    console.error('Get site workers error:', error);
     res.status(500).json({ error: 'Errore nel recupero operai cantiere' });
   }
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('❌ Unhandled error:', err);
+  res.status(500).json({ error: 'Errore interno del server', details: err.message });
 });
 
 // Start server

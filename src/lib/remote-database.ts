@@ -1,25 +1,25 @@
-
-// Client per database remoto
+// Client per database remoto - completamente riscritto
 import { Worker, Site, TimeEntry, Payment } from './local-database'
 
 interface RemoteConfig {
   host: string
   port: string
-  credentials?: {
-    email: string
-    password: string
-  }
 }
 
 class RemoteDatabase {
   private config: RemoteConfig
+  private credentials: { email: string; password: string } | null = null
 
   constructor(config: RemoteConfig) {
     this.config = config
   }
 
+  private getBaseUrl(): string {
+    return `http://${this.config.host}:${this.config.port}`
+  }
+
   private async request(endpoint: string, options: RequestInit = {}): Promise<any> {
-    const url = `http://${this.config.host}:${this.config.port}${endpoint}`
+    const url = `${this.getBaseUrl()}${endpoint}`
     
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -27,18 +27,19 @@ class RemoteDatabase {
     }
 
     // Aggiungi credenziali se disponibili
-    if (this.config.credentials) {
-      headers['X-User-Email'] = this.config.credentials.email
-      headers['X-User-Password'] = this.config.credentials.password
+    if (this.credentials) {
+      headers['X-User-Email'] = this.credentials.email
+      headers['X-User-Password'] = this.credentials.password
     }
 
     try {
       console.log(`🌐 Remote API: ${options.method || 'GET'} ${url}`)
+      console.log('📤 Headers:', { ...headers, 'X-User-Password': headers['X-User-Password'] ? '[HIDDEN]' : 'not set' })
       
       const response = await fetch(url, {
         ...options,
         headers,
-        credentials: 'include'
+        mode: 'cors'
       })
 
       console.log(`📡 Response: ${response.status} ${response.statusText}`)
@@ -48,6 +49,7 @@ class RemoteDatabase {
         try {
           const errorData = await response.json()
           errorMessage = errorData.error || errorData.message || errorMessage
+          console.log('❌ Error response:', errorData)
         } catch {
           errorMessage = response.statusText || errorMessage
         }
@@ -55,12 +57,12 @@ class RemoteDatabase {
       }
 
       const data = await response.json()
-      console.log('✅ Remote API success:', data)
+      console.log('✅ Remote API success')
       return data
     } catch (error: any) {
       console.error('❌ Remote API error:', error)
-      if (error.message === 'Failed to fetch') {
-        throw new Error(`Impossibile connettersi al server ${this.config.host}:${this.config.port}`)
+      if (error.message === 'Failed to fetch' || error.name === 'TypeError') {
+        throw new Error(`Impossibile connettersi al server ${this.config.host}:${this.config.port}. Verifica che il server sia avviato.`)
       }
       throw error
     }
@@ -68,54 +70,65 @@ class RemoteDatabase {
 
   async testConnection(): Promise<boolean> {
     try {
-      await this.request('/health')
+      console.log('🔍 Testing connection to:', this.getBaseUrl())
+      const response = await this.request('/health')
+      console.log('✅ Connection test successful:', response)
       return true
-    } catch {
+    } catch (error) {
+      console.error('❌ Connection test failed:', error)
       return false
     }
   }
 
   setCredentials(email: string, password: string): void {
-    this.config.credentials = { email, password }
+    console.log('🔑 Setting credentials for:', email)
+    this.credentials = { email, password }
   }
 
   clearCredentials(): void {
-    this.config.credentials = undefined
+    console.log('🔑 Clearing credentials')
+    this.credentials = null
   }
 
   // Auth
   async register(email: string, password: string): Promise<{ success: boolean; error?: string; user?: any }> {
     try {
+      console.log('📝 Registering user:', email)
       const response = await this.request('/auth/register', {
         method: 'POST',
         body: JSON.stringify({ email, password })
       })
       
       if (response.success) {
+        console.log('✅ Registration successful')
         this.setCredentials(email, password)
         return { success: true, user: response.user }
       }
       
       return { success: false, error: response.error || 'Registrazione fallita' }
     } catch (error: any) {
+      console.error('❌ Registration error:', error)
       return { success: false, error: error.message }
     }
   }
 
   async login(email: string, password: string): Promise<{ success: boolean; error?: string; user?: any }> {
     try {
+      console.log('🔐 Logging in user:', email)
       const response = await this.request('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password })
       })
       
       if (response.success) {
+        console.log('✅ Login successful')
         this.setCredentials(email, password)
         return { success: true, user: response.user }
       }
       
       return { success: false, error: response.error || 'Login fallito' }
     } catch (error: any) {
+      console.error('❌ Login error:', error)
       return { success: false, error: error.message }
     }
   }
@@ -123,18 +136,25 @@ class RemoteDatabase {
   async logout(): Promise<void> {
     try {
       await this.request('/auth/logout', { method: 'POST' })
+      console.log('✅ Logout successful')
     } catch (error) {
-      console.error('Logout error:', error)
+      console.error('❌ Logout error:', error)
     }
     this.clearCredentials()
   }
 
   // Workers
   async getWorkers(): Promise<Worker[]> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request('/workers')
   }
 
   async addWorker(worker: Omit<Worker, 'id' | 'created_at'>): Promise<Worker> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request('/workers', {
       method: 'POST',
       body: JSON.stringify({
@@ -149,6 +169,9 @@ class RemoteDatabase {
   }
 
   async updateWorker(id: number, worker: Partial<Worker>): Promise<Worker> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request(`/workers/${id}`, {
       method: 'PUT',
       body: JSON.stringify(worker)
@@ -156,15 +179,24 @@ class RemoteDatabase {
   }
 
   async deleteWorker(id: number): Promise<void> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     await this.request(`/workers/${id}`, { method: 'DELETE' })
   }
 
   // Sites
   async getSites(): Promise<Site[]> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request('/sites')
   }
 
   async addSite(site: Omit<Site, 'id' | 'created_at'>): Promise<Site> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request('/sites', {
       method: 'POST',
       body: JSON.stringify({
@@ -179,6 +211,9 @@ class RemoteDatabase {
   }
 
   async updateSite(id: number, site: Partial<Site>): Promise<Site> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request(`/sites/${id}`, {
       method: 'PUT',
       body: JSON.stringify(site)
@@ -186,15 +221,24 @@ class RemoteDatabase {
   }
 
   async deleteSite(id: number): Promise<void> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     await this.request(`/sites/${id}`, { method: 'DELETE' })
   }
 
   // Time Entries
   async getTimeEntries(): Promise<TimeEntry[]> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request('/time-entries')
   }
 
   async addTimeEntry(entry: Omit<TimeEntry, 'id' | 'created_at' | 'workerName' | 'siteName'>): Promise<TimeEntry> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request('/time-entries', {
       method: 'POST',
       body: JSON.stringify(entry)
@@ -202,6 +246,9 @@ class RemoteDatabase {
   }
 
   async updateTimeEntry(id: number, entry: Partial<TimeEntry>): Promise<TimeEntry> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request(`/time-entries/${id}`, {
       method: 'PUT',
       body: JSON.stringify(entry)
@@ -209,15 +256,24 @@ class RemoteDatabase {
   }
 
   async deleteTimeEntry(id: number): Promise<void> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     await this.request(`/time-entries/${id}`, { method: 'DELETE' })
   }
 
   // Payments
   async getPayments(): Promise<Payment[]> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request('/payments')
   }
 
   async addPayment(payment: Omit<Payment, 'id' | 'created_at' | 'workerName'>): Promise<Payment> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request('/payments', {
       method: 'POST',
       body: JSON.stringify(payment)
@@ -225,6 +281,9 @@ class RemoteDatabase {
   }
 
   async updatePayment(id: number, payment: Partial<Payment>): Promise<Payment> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     return await this.request(`/payments/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payment)
@@ -232,11 +291,17 @@ class RemoteDatabase {
   }
 
   async deletePayment(id: number): Promise<void> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     await this.request(`/payments/${id}`, { method: 'DELETE' })
   }
 
   // Dashboard
   async getDashboardStats(): Promise<{ activeWorkers: number; activeSites: number; pendingPayments: number; todayHours: number }> {
+    if (!this.credentials) {
+      throw new Error('Credenziali non impostate')
+    }
     try {
       return await this.request('/dashboard/stats')
     } catch (error) {
