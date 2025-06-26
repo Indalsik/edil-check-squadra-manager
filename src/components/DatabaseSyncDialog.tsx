@@ -1,10 +1,14 @@
 import { useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useDatabase } from '@/contexts/DatabaseContext'
+import { databaseSync } from '@/lib/database-sync'
 import { 
   Database, 
   Server, 
@@ -18,7 +22,9 @@ import {
   Clock,
   Zap,
   Shield,
-  HardDrive
+  HardDrive,
+  Settings,
+  Save
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -42,21 +48,44 @@ export function DatabaseSyncDialog({ open, onOpenChange }: DatabaseSyncDialogPro
   const [isChanging, setIsChanging] = useState(false)
   const [isOperating, setIsOperating] = useState(false)
   const [lastResult, setLastResult] = useState<any>(null)
+  const [showServerConfig, setShowServerConfig] = useState(false)
+  const [replaceOnRestore, setReplaceOnRestore] = useState(true)
+  
+  // Configurazione server locale
+  const [serverConfig, setServerConfig] = useState(() => {
+    return databaseSync.getRemoteConfig()
+  })
 
-  const handleModeChange = async (newMode: 'local-only' | 'local-with-backup') => {
+  const handleModeChange = (newMode: 'local' | 'remote') => {
     setIsChanging(true)
-    setMode(newMode)
+    const dbMode = newMode === 'local' ? 'local-only' : 'local-with-backup'
+    setMode(dbMode)
     setTimeout(() => {
       setIsChanging(false)
     }, 2000)
   }
 
+  const handleServerConfigChange = (field: 'host' | 'port', value: string) => {
+    setServerConfig(prev => ({ ...prev, [field]: value }))
+  }
+
+  const applyServerConfig = () => {
+    databaseSync.setRemoteConfig(serverConfig)
+    toast.success('Configurazione server aggiornata')
+    setShowServerConfig(false)
+  }
+
+  const resetServerConfig = () => {
+    const currentConfig = databaseSync.getRemoteConfig()
+    setServerConfig(currentConfig)
+  }
+
   const handleTestConnection = async () => {
     const connected = await testRemoteConnection()
     if (connected) {
-      toast.success('Server remoto raggiungibile!')
+      toast.success('Server backup raggiungibile!')
     } else {
-      toast.error('Server remoto non raggiungibile')
+      toast.error('Server backup non raggiungibile')
     }
   }
 
@@ -79,17 +108,27 @@ export function DatabaseSyncDialog({ open, onOpenChange }: DatabaseSyncDialogPro
   }
 
   const handleRestore = async () => {
-    if (!confirm('Sei sicuro di voler ripristinare i dati dal server remoto? Questo potrebbe sovrascrivere i dati locali.')) {
+    const confirmMessage = replaceOnRestore 
+      ? 'Sei sicuro di voler ripristinare i dati dal server? Questo SOSTITUIRÀ tutti i dati locali esistenti.'
+      : 'Sei sicuro di voler ripristinare i dati dal server? I dati duplicati verranno ignorati.'
+    
+    if (!confirm(confirmMessage)) {
       return
     }
 
     setIsOperating(true)
     try {
-      const result = await restoreFromRemote()
+      // Usa la nuova funzione con opzione di sostituzione
+      const result = await databaseSync.restoreFromRemote(
+        localStorage.getItem('edilcheck_user') ? 
+          JSON.parse(localStorage.getItem('edilcheck_user')!).email : 'anonymous',
+        replaceOnRestore
+      )
       setLastResult(result)
       
       if (result.success) {
-        toast.success(`Ripristino completato! ${result.itemsProcessed} elementi ripristinati`)
+        const conflictMessage = result.conflicts > 0 ? ` (${result.conflicts} conflitti ignorati)` : ''
+        toast.success(`Ripristino completato! ${result.itemsProcessed} elementi ripristinati${conflictMessage}`)
       } else {
         toast.error(`Ripristino fallito: ${result.error}`)
       }
@@ -128,7 +167,7 @@ export function DatabaseSyncDialog({ open, onOpenChange }: DatabaseSyncDialogPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Database className="h-5 w-5" />
@@ -211,7 +250,7 @@ export function DatabaseSyncDialog({ open, onOpenChange }: DatabaseSyncDialogPro
                 <Button 
                   variant={mode === 'local-only' ? 'default' : 'outline'}
                   className="w-full"
-                  onClick={() => handleModeChange('local-only')}
+                  onClick={() => handleModeChange('local')}
                   disabled={isChanging}
                 >
                   {mode === 'local-only' ? 'In Uso' : 'Usa Solo Locale'}
@@ -258,142 +297,233 @@ export function DatabaseSyncDialog({ open, onOpenChange }: DatabaseSyncDialogPro
                   <Button 
                     variant={mode === 'local-with-backup' ? 'default' : 'outline'}
                     className="w-full"
-                    onClick={() => handleModeChange('local-with-backup')}
+                    onClick={() => handleModeChange('remote')}
                     disabled={isChanging}
                   >
                     {mode === 'local-with-backup' ? 'In Uso' : 'Abilita Backup'}
                   </Button>
-                  {mode === 'local-with-backup' && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full"
-                      onClick={handleTestConnection}
-                    >
-                      <Wifi className="h-4 w-4 mr-2" />
-                      Test Server Backup
-                    </Button>
-                  )}
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Backup Controls */}
+          {/* Server Configuration */}
           {mode === 'local-with-backup' && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Backup e Ripristino</h3>
-              
-              {/* Backup Status */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Stato Backup</CardTitle>
-                    <Badge className={getStatusColor(syncStatus.status)}>
-                      <div className="flex items-center gap-1">
-                        {getStatusIcon(syncStatus.status)}
-                        <span className="capitalize">{syncStatus.status}</span>
-                      </div>
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-600">Ultimo Backup</p>
-                      <p className="font-medium">{formatLastOperation(syncStatus.lastBackup)}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Ultimo Ripristino</p>
-                      <p className="font-medium">{formatLastOperation(syncStatus.lastRestore)}</p>
-                    </div>
-                  </div>
-                  
-                  {syncStatus.error && (
-                    <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
-                      {syncStatus.error}
-                    </div>
-                  )}
-                  
-                  {(syncStatus.status === 'backing-up' || syncStatus.status === 'restoring') && (
-                    <div className="space-y-2">
-                      <Progress value={50} className="h-2" />
-                      <p className="text-sm text-gray-600">
-                        {syncStatus.status === 'backing-up' ? 'Backup in corso...' : 'Ripristino in corso...'}
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Backup Controls */}
-              <div className="grid grid-cols-2 gap-3">
-                <Button 
-                  onClick={handleBackup}
-                  disabled={!isRemoteAvailable || isOperating || syncStatus.status === 'backing-up'}
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Configurazione Server Backup</h3>
+                <Button
                   variant="outline"
-                  className="flex-1"
+                  size="sm"
+                  onClick={() => setShowServerConfig(!showServerConfig)}
                 >
-                  {syncStatus.status === 'backing-up' ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Backup...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Backup
-                    </>
-                  )}
-                </Button>
-
-                <Button 
-                  onClick={handleRestore}
-                  disabled={!isRemoteAvailable || isOperating || syncStatus.status === 'restoring'}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  {syncStatus.status === 'restoring' ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Ripristino...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="h-4 w-4 mr-2" />
-                      Ripristina
-                    </>
-                  )}
+                  <Settings className="h-4 w-4 mr-2" />
+                  {showServerConfig ? 'Nascondi' : 'Configura'}
                 </Button>
               </div>
 
-              {/* Last Operation Result */}
-              {lastResult && (
-                <Card>
+              {showServerConfig && (
+                <Card className="border-orange-200 bg-orange-50">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-base">
-                      Ultimo {lastResult.operation === 'backup' ? 'Backup' : 'Ripristino'}
-                    </CardTitle>
+                    <CardTitle className="text-base text-orange-800">Indirizzo Server</CardTitle>
+                    <CardDescription className="text-orange-700">
+                      Configura l'indirizzo del server di backup
+                    </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <p className="text-gray-600">Elementi Processati</p>
-                        <p className="font-medium text-blue-600">{lastResult.itemsProcessed}</p>
+                        <Label className="text-sm text-orange-700">Host</Label>
+                        <Input
+                          value={serverConfig.host}
+                          onChange={(e) => handleServerConfigChange('host', e.target.value)}
+                          placeholder="localhost"
+                          className="h-8"
+                        />
                       </div>
                       <div>
-                        <p className="text-gray-600">Conflitti</p>
-                        <p className="font-medium text-yellow-600">{lastResult.conflicts}</p>
+                        <Label className="text-sm text-orange-700">Porta</Label>
+                        <Input
+                          value={serverConfig.port}
+                          onChange={(e) => handleServerConfigChange('port', e.target.value)}
+                          placeholder="3002"
+                          className="h-8"
+                        />
                       </div>
                     </div>
-                    {lastResult.error && (
-                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
-                        {lastResult.error}
+                    
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={applyServerConfig}
+                        className="bg-orange-100 hover:bg-orange-200 text-orange-800"
+                      >
+                        <Save className="h-4 w-4 mr-2" />
+                        Salva
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={resetServerConfig}
+                        className="text-orange-700"
+                      >
+                        Reset
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleTestConnection}
+                        className="text-orange-700"
+                      >
+                        <Wifi className="h-4 w-4 mr-2" />
+                        Test
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Backup Controls */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Backup e Ripristino</h3>
+                
+                {/* Backup Status */}
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">Stato Backup</CardTitle>
+                      <Badge className={getStatusColor(syncStatus.status)}>
+                        <div className="flex items-center gap-1">
+                          {getStatusIcon(syncStatus.status)}
+                          <span className="capitalize">{syncStatus.status}</span>
+                        </div>
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-600">Ultimo Backup</p>
+                        <p className="font-medium">{formatLastOperation(syncStatus.lastBackup)}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Ultimo Ripristino</p>
+                        <p className="font-medium">{formatLastOperation(syncStatus.lastRestore)}</p>
+                      </div>
+                    </div>
+                    
+                    {syncStatus.error && (
+                      <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                        {syncStatus.error}
+                      </div>
+                    )}
+                    
+                    {(syncStatus.status === 'backing-up' || syncStatus.status === 'restoring') && (
+                      <div className="space-y-2">
+                        <Progress value={50} className="h-2" />
+                        <p className="text-sm text-gray-600">
+                          {syncStatus.status === 'backing-up' ? 'Backup in corso...' : 'Ripristino in corso...'}
+                        </p>
                       </div>
                     )}
                   </CardContent>
                 </Card>
-              )}
+
+                {/* Restore Options */}
+                <Card className="border-blue-200 bg-blue-50">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base text-blue-800">Opzioni Ripristino</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="replace-data" 
+                        checked={replaceOnRestore}
+                        onCheckedChange={setReplaceOnRestore}
+                      />
+                      <Label htmlFor="replace-data" className="text-sm text-blue-800">
+                        Sostituisci tutti i dati esistenti
+                      </Label>
+                    </div>
+                    <p className="text-xs text-blue-600 mt-2">
+                      {replaceOnRestore 
+                        ? 'I dati locali verranno completamente sostituiti con quelli del backup'
+                        : 'I dati duplicati verranno ignorati, mantenendo quelli esistenti'
+                      }
+                    </p>
+                  </CardContent>
+                </Card>
+
+                {/* Backup Controls */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Button 
+                    onClick={handleBackup}
+                    disabled={!isRemoteAvailable || isOperating || syncStatus.status === 'backing-up'}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    {syncStatus.status === 'backing-up' ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Backup...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Backup
+                      </>
+                    )}
+                  </Button>
+
+                  <Button 
+                    onClick={handleRestore}
+                    disabled={!isRemoteAvailable || isOperating || syncStatus.status === 'restoring'}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    {syncStatus.status === 'restoring' ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Ripristino...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4 mr-2" />
+                        Ripristina
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Last Operation Result */}
+                {lastResult && (
+                  <Card>
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base">
+                        Ultimo {lastResult.operation === 'backup' ? 'Backup' : 'Ripristino'}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <p className="text-gray-600">Elementi Processati</p>
+                          <p className="font-medium text-blue-600">{lastResult.itemsProcessed}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Conflitti</p>
+                          <p className="font-medium text-yellow-600">{lastResult.conflicts}</p>
+                        </div>
+                      </div>
+                      {lastResult.error && (
+                        <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-800">
+                          {lastResult.error}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             </div>
           )}
 

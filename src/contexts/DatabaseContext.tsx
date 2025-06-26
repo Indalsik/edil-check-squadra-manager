@@ -90,8 +90,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   })
   
   const [remoteConfig, setRemoteConfigState] = useState(() => {
-    const saved = localStorage.getItem('edilcheck_remote_config')
-    return saved ? JSON.parse(saved) : { host: 'localhost', port: '3002' }
+    return databaseSync.getRemoteConfig()
   })
   
   const [isRemoteAvailable, setIsRemoteAvailable] = useState(false)
@@ -117,7 +116,6 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     console.log(`🔧 Updating backup server config: ${host}:${port}`)
     const newConfig = { host, port }
     setRemoteConfigState(newConfig)
-    localStorage.setItem('edilcheck_remote_config', JSON.stringify(newConfig))
     
     // Riconfigura il sistema di backup se in modalità backup
     if (mode === 'local-with-backup') {
@@ -169,7 +167,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     const userEmail = user?.email || 'anonymous'
     
     console.log('📥 Starting restore from server for user:', userEmail)
-    return await databaseSync.restoreFromRemote(userEmail)
+    return await databaseSync.restoreFromRemote(userEmail, true) // Default: sostituisci i dati
   }
 
   // Inizializza all'avvio

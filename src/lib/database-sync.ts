@@ -50,6 +50,11 @@ class DatabaseSync {
     this.testConnection()
   }
 
+  // Ottieni configurazione corrente
+  getRemoteConfig(): RemoteConfig {
+    return { ...this.remoteConfig }
+  }
+
   private getBaseUrl(): string {
     return `http://${this.remoteConfig.host}:${this.remoteConfig.port}`
   }
@@ -224,8 +229,8 @@ class DatabaseSync {
     }
   }
 
-  // RESTORE: Scarica i dati dal server e li ripristina localmente
-  async restoreFromRemote(userEmail: string): Promise<SyncResult> {
+  // RESTORE: Scarica i dati dal server e li ripristina localmente (SOSTITUISCE i dati esistenti)
+  async restoreFromRemote(userEmail: string, replaceExisting: boolean = true): Promise<SyncResult> {
     if (!this.syncStatus.isRemoteAvailable) {
       throw new Error('Server backup non disponibile')
     }
@@ -234,6 +239,7 @@ class DatabaseSync {
 
     try {
       console.log('📥 Starting restore from server for user:', userEmail)
+      console.log('🔄 Replace existing data:', replaceExisting)
       
       // Richiedi i dati dal server
       const backupData = await this.request(`/restore/${encodeURIComponent(userEmail)}`)
@@ -252,15 +258,33 @@ class DatabaseSync {
       let itemsProcessed = 0
       let conflicts = 0
 
-      // Pulisci i dati locali esistenti (opzionale - potresti voler fare un merge)
-      console.log('🗑️ Clearing existing local data...')
-      localDatabase.clearUserData(userEmail)
+      // Se richiesto, pulisci i dati locali esistenti
+      if (replaceExisting) {
+        console.log('🗑️ Clearing existing local data...')
+        localDatabase.clearUserData(userEmail)
+      }
 
       // Ripristina Workers
       if (backupData.data.workers) {
         for (const worker of backupData.data.workers) {
           try {
-            localDatabase.addWorker(userEmail, worker)
+            if (replaceExisting) {
+              localDatabase.addWorker(userEmail, worker)
+            } else {
+              // Controlla se esiste già un worker con lo stesso nome/email
+              const existingWorkers = localDatabase.getWorkers(userEmail)
+              const exists = existingWorkers.some(w => 
+                w.name === worker.name || w.email === worker.email
+              )
+              
+              if (!exists) {
+                localDatabase.addWorker(userEmail, worker)
+              } else {
+                conflicts++
+                console.warn('⚠️ Worker already exists, skipping:', worker.name)
+                continue
+              }
+            }
             itemsProcessed++
           } catch (error) {
             conflicts++
@@ -273,7 +297,21 @@ class DatabaseSync {
       if (backupData.data.sites) {
         for (const site of backupData.data.sites) {
           try {
-            localDatabase.addSite(userEmail, site)
+            if (replaceExisting) {
+              localDatabase.addSite(userEmail, site)
+            } else {
+              // Controlla se esiste già un site con lo stesso nome
+              const existingSites = localDatabase.getSites(userEmail)
+              const exists = existingSites.some(s => s.name === site.name)
+              
+              if (!exists) {
+                localDatabase.addSite(userEmail, site)
+              } else {
+                conflicts++
+                console.warn('⚠️ Site already exists, skipping:', site.name)
+                continue
+              }
+            }
             itemsProcessed++
           } catch (error) {
             conflicts++
@@ -286,7 +324,25 @@ class DatabaseSync {
       if (backupData.data.timeEntries) {
         for (const entry of backupData.data.timeEntries) {
           try {
-            localDatabase.addTimeEntry(userEmail, entry)
+            if (replaceExisting) {
+              localDatabase.addTimeEntry(userEmail, entry)
+            } else {
+              // Per le time entries, controlla duplicati per data/worker/site
+              const existingEntries = localDatabase.getTimeEntries(userEmail)
+              const exists = existingEntries.some(te => 
+                te.workerId === entry.workerId && 
+                te.siteId === entry.siteId && 
+                te.date === entry.date
+              )
+              
+              if (!exists) {
+                localDatabase.addTimeEntry(userEmail, entry)
+              } else {
+                conflicts++
+                console.warn('⚠️ Time entry already exists, skipping:', entry.date)
+                continue
+              }
+            }
             itemsProcessed++
           } catch (error) {
             conflicts++
@@ -299,7 +355,23 @@ class DatabaseSync {
       if (backupData.data.payments) {
         for (const payment of backupData.data.payments) {
           try {
-            localDatabase.addPayment(userEmail, payment)
+            if (replaceExisting) {
+              localDatabase.addPayment(userEmail, payment)
+            } else {
+              // Per i payments, controlla duplicati per worker/week
+              const existingPayments = localDatabase.getPayments(userEmail)
+              const exists = existingPayments.some(p => 
+                p.workerId === payment.workerId && p.week === payment.week
+              )
+              
+              if (!exists) {
+                localDatabase.addPayment(userEmail, payment)
+              } else {
+                conflicts++
+                console.warn('⚠️ Payment already exists, skipping:', payment.week)
+                continue
+              }
+            }
             itemsProcessed++
           } catch (error) {
             conflicts++
