@@ -73,12 +73,14 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   const [isConnected, setIsConnected] = useState(false)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [remoteDatabase, setRemoteDatabase] = useState<RemoteDatabase | null>(null)
+  const [isInitialized, setIsInitialized] = useState(false)
 
   // Aggiorna modalità database
   const handleSetMode = (newMode: DatabaseMode) => {
     console.log(`🔄 Switching database mode: ${mode} → ${newMode}`)
     setMode(newMode)
     localStorage.setItem('edilcheck_database_mode', newMode)
+    setIsInitialized(false) // Reset initialization when mode changes
   }
 
   // Aggiorna configurazione remota
@@ -88,11 +90,11 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     setRemoteConfigState(newConfig)
     localStorage.setItem('edilcheck_remote_config', JSON.stringify(newConfig))
     
-    // Ricrea il client remoto
+    // Ricrea il client remoto se in modalità remota
     if (mode === 'remote') {
       const newRemoteDb = new RemoteDatabase(newConfig)
       setRemoteDatabase(newRemoteDb)
-      testConnection()
+      setIsInitialized(false) // Reset to re-test connection
     }
   }
 
@@ -105,9 +107,27 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     }
 
     if (!remoteDatabase) {
-      setIsConnected(false)
-      setConnectionError('Database remoto non configurato')
-      return false
+      // Create remote database instance if not exists
+      const newRemoteDb = new RemoteDatabase(remoteConfig)
+      setRemoteDatabase(newRemoteDb)
+      
+      try {
+        const connected = await newRemoteDb.testConnection()
+        setIsConnected(connected)
+        if (connected) {
+          setConnectionError(null)
+          console.log('✅ Remote database connected')
+        } else {
+          setConnectionError('Impossibile connettersi al server remoto')
+          console.log('❌ Remote database connection failed')
+        }
+        return connected
+      } catch (error: any) {
+        setIsConnected(false)
+        setConnectionError(error.message)
+        console.error('❌ Remote database error:', error)
+        return false
+      }
     }
 
     try {
@@ -132,19 +152,45 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   // Inizializza database all'avvio
   useEffect(() => {
     const initDatabase = async () => {
+      console.log(`🚀 Initializing database in ${mode} mode`)
+      
       if (mode === 'local') {
         setIsConnected(true)
         setConnectionError(null)
+        setIsInitialized(true)
         console.log('✅ Local database ready')
       } else {
-        const newRemoteDb = new RemoteDatabase(remoteConfig)
-        setRemoteDatabase(newRemoteDb)
-        await testConnection()
+        // Remote mode
+        if (!remoteDatabase) {
+          const newRemoteDb = new RemoteDatabase(remoteConfig)
+          setRemoteDatabase(newRemoteDb)
+        }
+        
+        // Test connection but don't block initialization
+        try {
+          const connected = await (remoteDatabase || new RemoteDatabase(remoteConfig)).testConnection()
+          setIsConnected(connected)
+          if (connected) {
+            setConnectionError(null)
+            console.log('✅ Remote database connected')
+          } else {
+            setConnectionError('Impossibile connettersi al server remoto. Usando database locale come fallback.')
+            console.log('⚠️ Remote database connection failed, using local fallback')
+          }
+        } catch (error: any) {
+          setIsConnected(false)
+          setConnectionError(`Errore connessione remota: ${error.message}. Usando database locale come fallback.`)
+          console.error('❌ Remote database error, using local fallback:', error)
+        }
+        
+        setIsInitialized(true)
       }
     }
 
-    initDatabase()
-  }, [mode])
+    if (!isInitialized) {
+      initDatabase()
+    }
+  }, [mode, isInitialized, remoteConfig])
 
   // Aggiorna credenziali remote quando l'utente cambia
   useEffect(() => {
@@ -161,171 +207,243 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [mode, remoteDatabase, user])
 
-  // Operazioni database
+  // Operazioni database con fallback automatico
   const getWorkers = async () => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.getWorkers(userEmail)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.getWorkers()
+    } else {
+      try {
+        return await remoteDatabase.getWorkers()
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.getWorkers(userEmail)
+      }
     }
-    return []
   }
 
   const addWorker = async (worker: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.addWorker(userEmail, worker)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.addWorker(worker)
+    } else {
+      try {
+        return await remoteDatabase.addWorker(worker)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.addWorker(userEmail, worker)
+      }
     }
-    throw new Error('Database not available')
   }
 
   const updateWorker = async (id: number, worker: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.updateWorker(userEmail, id, worker)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.updateWorker(id, worker)
+    } else {
+      try {
+        return await remoteDatabase.updateWorker(id, worker)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.updateWorker(userEmail, id, worker)
+      }
     }
-    throw new Error('Database not available')
   }
 
   const deleteWorker = async (id: number) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       localDatabase.deleteWorker(userEmail, id)
-    } else if (remoteDatabase) {
-      await remoteDatabase.deleteWorker(id)
+    } else {
+      try {
+        await remoteDatabase.deleteWorker(id)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        localDatabase.deleteWorker(userEmail, id)
+      }
     }
   }
 
   const getSites = async () => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.getSites(userEmail)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.getSites()
+    } else {
+      try {
+        return await remoteDatabase.getSites()
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.getSites(userEmail)
+      }
     }
-    return []
   }
 
   const addSite = async (site: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.addSite(userEmail, site)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.addSite(site)
+    } else {
+      try {
+        return await remoteDatabase.addSite(site)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.addSite(userEmail, site)
+      }
     }
-    throw new Error('Database not available')
   }
 
   const updateSite = async (id: number, site: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.updateSite(userEmail, id, site)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.updateSite(id, site)
+    } else {
+      try {
+        return await remoteDatabase.updateSite(id, site)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.updateSite(userEmail, id, site)
+      }
     }
-    throw new Error('Database not available')
   }
 
   const deleteSite = async (id: number) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       localDatabase.deleteSite(userEmail, id)
-    } else if (remoteDatabase) {
-      await remoteDatabase.deleteSite(id)
+    } else {
+      try {
+        await remoteDatabase.deleteSite(id)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        localDatabase.deleteSite(userEmail, id)
+      }
     }
   }
 
   const getTimeEntries = async () => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.getTimeEntries(userEmail)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.getTimeEntries()
+    } else {
+      try {
+        return await remoteDatabase.getTimeEntries()
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.getTimeEntries(userEmail)
+      }
     }
-    return []
   }
 
   const addTimeEntry = async (entry: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.addTimeEntry(userEmail, entry)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.addTimeEntry(entry)
+    } else {
+      try {
+        return await remoteDatabase.addTimeEntry(entry)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.addTimeEntry(userEmail, entry)
+      }
     }
-    throw new Error('Database not available')
   }
 
   const updateTimeEntry = async (id: number, entry: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.updateTimeEntry(userEmail, id, entry)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.updateTimeEntry(id, entry)
+    } else {
+      try {
+        return await remoteDatabase.updateTimeEntry(id, entry)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.updateTimeEntry(userEmail, id, entry)
+      }
     }
-    throw new Error('Database not available')
   }
 
   const deleteTimeEntry = async (id: number) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       localDatabase.deleteTimeEntry(userEmail, id)
-    } else if (remoteDatabase) {
-      await remoteDatabase.deleteTimeEntry(id)
+    } else {
+      try {
+        await remoteDatabase.deleteTimeEntry(id)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        localDatabase.deleteTimeEntry(userEmail, id)
+      }
     }
   }
 
   const getPayments = async () => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.getPayments(userEmail)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.getPayments()
+    } else {
+      try {
+        return await remoteDatabase.getPayments()
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.getPayments(userEmail)
+      }
     }
-    return []
   }
 
   const addPayment = async (payment: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.addPayment(userEmail, payment)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.addPayment(payment)
+    } else {
+      try {
+        return await remoteDatabase.addPayment(payment)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.addPayment(userEmail, payment)
+      }
     }
-    throw new Error('Database not available')
   }
 
   const updatePayment = async (id: number, payment: any) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.updatePayment(userEmail, id, payment)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.updatePayment(id, payment)
+    } else {
+      try {
+        return await remoteDatabase.updatePayment(id, payment)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.updatePayment(userEmail, id, payment)
+      }
     }
-    throw new Error('Database not available')
   }
 
   const deletePayment = async (id: number) => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       localDatabase.deletePayment(userEmail, id)
-    } else if (remoteDatabase) {
-      await remoteDatabase.deletePayment(id)
+    } else {
+      try {
+        await remoteDatabase.deletePayment(id)
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        localDatabase.deletePayment(userEmail, id)
+      }
     }
   }
 
   const getDashboardStats = async () => {
     const userEmail = user?.email || 'anonymous'
-    if (mode === 'local') {
+    if (mode === 'local' || !isConnected || !remoteDatabase) {
       return localDatabase.getDashboardStats(userEmail)
-    } else if (remoteDatabase) {
-      return await remoteDatabase.getDashboardStats()
+    } else {
+      try {
+        return await remoteDatabase.getDashboardStats()
+      } catch (error) {
+        console.warn('Remote database failed, falling back to local:', error)
+        return localDatabase.getDashboardStats(userEmail)
+      }
     }
-    return { activeWorkers: 0, activeSites: 0, pendingPayments: 0, todayHours: 0 }
   }
 
   return (
@@ -334,7 +452,7 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
       setMode: handleSetMode,
       remoteConfig,
       setRemoteConfig,
-      isConnected,
+      isConnected: isInitialized && (mode === 'local' || isConnected),
       connectionError,
       testConnection,
       getWorkers,
