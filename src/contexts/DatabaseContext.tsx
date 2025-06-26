@@ -141,28 +141,28 @@ export const DatabaseProvider = ({ children }: { children: ReactNode }) => {
   // Backup manuale verso remoto
   const backupToRemote = async (): Promise<SyncResult> => {
     if (!user?.email) {
-      throw new Error('Utente non autenticato')
+      throw new Error('Utente non autenticato per il backup')
     }
     
     if (!isRemoteAvailable) {
       throw new Error('Server remoto non disponibile')
     }
     
-    console.log('💾 Starting backup to remote...')
+    console.log('💾 Starting backup to remote for user:', user.email)
     return await databaseSync.backupToRemote(user.email)
   }
 
   // Ripristino da remoto
   const restoreFromRemote = async (): Promise<SyncResult> => {
     if (!user?.email) {
-      throw new Error('Utente non autenticato')
+      throw new Error('Utente non autenticato per il ripristino')
     }
     
     if (!isRemoteAvailable) {
       throw new Error('Server remoto non disponibile')
     }
     
-    console.log('📥 Starting restore from remote...')
+    console.log('📥 Starting restore from remote for user:', user.email)
     return await databaseSync.restoreFromRemote(user.email)
   }
 
